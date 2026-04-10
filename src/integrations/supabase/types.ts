@@ -110,6 +110,141 @@ export type Database = {
           },
         ]
       }
+      client_integration_metrics: {
+        Row: {
+          client_id: string
+          created_at: string
+          data: Json
+          date_ref: string
+          id: string
+          integration_type: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          data?: Json
+          date_ref: string
+          id?: string
+          integration_type: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          data?: Json
+          date_ref?: string
+          id?: string
+          integration_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_integration_metrics_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_integrations: {
+        Row: {
+          access_token: string | null
+          client_id: string
+          connected_at: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          provider: string
+          refresh_token: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          client_id: string
+          connected_at?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          provider: string
+          refresh_token?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          client_id?: string
+          connected_at?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          provider?: string
+          refresh_token?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_integrations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_credentials: {
+        Row: {
+          client_id: string
+          created_at: string
+          ga4_property_id: string | null
+          general_notes: string | null
+          google_ads_account_id: string | null
+          gsc_property_url: string | null
+          id: string
+          meta_business_manager_id: string | null
+          social_media_handles: Json | null
+          updated_at: string
+          website_cms_notes: string | null
+          website_cms_url: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          ga4_property_id?: string | null
+          general_notes?: string | null
+          google_ads_account_id?: string | null
+          gsc_property_url?: string | null
+          id?: string
+          meta_business_manager_id?: string | null
+          social_media_handles?: Json | null
+          updated_at?: string
+          website_cms_notes?: string | null
+          website_cms_url?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          ga4_property_id?: string | null
+          general_notes?: string | null
+          google_ads_account_id?: string | null
+          gsc_property_url?: string | null
+          id?: string
+          meta_business_manager_id?: string | null
+          social_media_handles?: Json | null
+          updated_at?: string
+          website_cms_notes?: string | null
+          website_cms_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_credentials_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: true
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_services: {
         Row: {
           client_id: string
@@ -152,35 +287,64 @@ export type Database = {
       clients: {
         Row: {
           company: string | null
+          contract_start_date: string | null
+          contract_type: string | null
           created_at: string
           email: string | null
           id: string
+          industry: string | null
+          manager_id: string | null
+          monthly_retainer_value: number | null
           name: string
+          notes: string | null
           phone: string | null
           status: string
           updated_at: string
+          website_url: string | null
         }
         Insert: {
           company?: string | null
+          contract_start_date?: string | null
+          contract_type?: string | null
           created_at?: string
           email?: string | null
           id?: string
+          industry?: string | null
+          manager_id?: string | null
+          monthly_retainer_value?: number | null
           name: string
+          notes?: string | null
           phone?: string | null
           status?: string
           updated_at?: string
+          website_url?: string | null
         }
         Update: {
           company?: string | null
+          contract_start_date?: string | null
+          contract_type?: string | null
           created_at?: string
           email?: string | null
           id?: string
+          industry?: string | null
+          manager_id?: string | null
+          monthly_retainer_value?: number | null
           name?: string
+          notes?: string | null
           phone?: string | null
           status?: string
           updated_at?: string
+          website_url?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "clients_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       flags: {
         Row: {

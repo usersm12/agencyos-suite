@@ -1,13 +1,19 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { useEffect } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { initializeDatabase } from "@/lib/initializeDatabase";
+
+// Run the schema fallback init immediately on code load
+initializeDatabase();
 import AuthPage from "./pages/AuthPage";
 import AppLayout from "./components/AppLayout";
 import DashboardPage from "./pages/DashboardPage";
 import ClientsPage from "./pages/ClientsPage";
+import ClientProfilePage from "./pages/ClientProfilePage";
 import TasksPage from "./pages/TasksPage";
 import TeamPage from "./pages/TeamPage";
 import FlagsPage from "./pages/FlagsPage";
@@ -68,6 +74,7 @@ const App = () => (
             <Route element={<ProtectedRoutes />}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/clients" element={<ClientsPage />} />
+              <Route path="/clients/:id" element={<ClientProfilePage />} />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/team" element={<TeamPage />} />
               <Route path="/flags" element={<FlagsPage />} />
