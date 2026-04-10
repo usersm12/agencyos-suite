@@ -1,0 +1,302 @@
+import { useState } from "react";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon, Plus } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+
+const addTaskSchema = z.object({
+  title: z.string().min(2, "Title is required"),
+  client_id: z.string().min(1, "Client is required"),
+  service_id: z.string().optional(),
+  assigned_to: z.string().optional(),
+  due_date: z.date().optional(),
+  priority: z.enum(["low", "medium", "high"]).default("medium"),
+  status: z.enum(["not_started", "in_progress", "completed", "blocked", "overdue"]).default("not_started"),
+  task_type: z.enum(["template", "adhoc"]).default("adhoc"),
+  client_requested: z.boolean().default(false),
+  notes: z.string().optional(),
+});
+
+type AddTaskFormValues = z.infer<typeof addTaskSchema>;
+
+export function AddTaskModal() {
+  const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const form = useForm<AddTaskFormValues>({
+    resolver: zodResolver(addTaskSchema),
+    defaultValues: {
+      title: "",
+      client_id: "",
+      service_id: undefined,
+      assigned_to: undefined,
+      priority: "medium",
+      status: "not_started",
+      task_type: "adhoc",
+      client_requested: false,
+      notes: "",
+    },
+  });
+
+  const { data: clients } = useQuery({
+    queryKey: ['clients-dropdown'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('clients').select('id, name').order('name');
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const { data: services } = useQuery({
+    queryKey: ['services-dropdown'],
+    queryFn: async () => {
+      // In a real app we might fetch global services or client specific services
+      const { data, error } = await supabase.from('services').select('id, name');
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const { data: team } = useQuery({
+    queryKey: ['team-dropdown'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('profiles').select('id, full_name').eq('active', true);
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  async function onSubmit(data: AddTaskFormValues) {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .insert({
+          title: data.title,
+          client_id: data.client_id,
+          service_id: data.service_id || null,
+          assigned_to: data.assigned_to || null,
+          due_date: data.due_date ? format(data.due_date, 'yyyy-MM-dd') : null,
+          priority: data.priority,
+          status: data.status,
+          task_type: data.task_type,
+          client_requested: data.client_requested,
+          description: data.notes // mapped to description natively or notes? The table usually uses description
+        });
+
+      if (error) throw error;
+      toast.success("Task created successfully");
+      setOpen(false);
+      form.reset();
+      queryClient.invalidateQueries({ queryKey: ['tasks-list'] });
+    } catch (error: any) {
+      toast.error(error.message || "Failed to create task");
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button className="gap-2">
+          <Plus className="h-4 w-4" /> New Task
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Create New Task</DialogTitle>
+          <DialogDescription>Add a new task, assign it to a team member, and set a deadline.</DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-4">
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Task Title *</FormLabel>
+                  <FormControl>
+                    <Input placeholder="E.g., Complete Monthly SEO Audit" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="client_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Client *</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Select a client" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {clients?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="service_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Service Type</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="General / N/A" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {services?.map(s => <SelectItem key={s.id} value={s.id}>{s.name || 'Unnamed Service'}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="assigned_to"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Assign To</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {team?.map(t => <SelectItem key={t.id} value={t.id}>{t.full_name || 'Unnamed'}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="due_date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col mt-2.5">
+                    <FormLabel>Due Date</FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                            {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))} initialFocus />
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="priority"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Priority</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Select priority" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="task_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Task Type</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="adhoc">Ad-hoc (One off)</SelectItem>
+                        <SelectItem value="template">Template</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="client_requested"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                  <FormControl>
+                    <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel>Client Requested</FormLabel>
+                    <p className="text-sm text-muted-foreground">Was this task specifically requested by the client?</p>
+                  </div>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description / Notes</FormLabel>
+                  <FormControl>
+                    <Textarea className="min-h-[100px]" placeholder="Add context or instructions..." {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="flex justify-end gap-3 border-t pt-4">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button type="submit">Create Task</Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}

@@ -19,7 +19,12 @@ export default function ClientsPage() {
         .select(`
           id,
           name,
+          industry,
           status,
+          monthly_retainer_value,
+          profiles!clients_manager_id_fkey (
+            full_name
+          ),
           client_services (
             services (
               name
@@ -33,12 +38,12 @@ export default function ClientsPage() {
       return clientsData.map((c: any) => ({
         id: c.id,
         name: c.name,
-        industry: "General",
+        industry: c.industry || "General",
         healthScore: Math.max(0, 100 - (c.flags[0]?.count || 0) * 15),
-        managerName: "Unassigned",
+        managerName: c.profiles?.full_name || "Unassigned",
         activeServices: c.client_services?.map((cs: any) => cs.services?.name).filter(Boolean) || [],
         openFlagsCount: c.flags[0]?.count || 0,
-        monthlyRetainer: 0
+        monthlyRetainer: c.monthly_retainer_value || 0
       }));
     }
   });

@@ -1,21 +1,15 @@
 import { LayoutDashboard, Users, CheckSquare, UserCog, Flag, BarChart3, Settings, LogOut, Menu } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger,
-  useSidebar,
-} from "@/components/ui/sidebar";
+import { useState } from "react";
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Outlet } from "react-router-dom";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useBackgroundEngine } from "@/hooks/useBackgroundEngine";
+import { GlobalSearch } from "@/components/GlobalSearch";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 const navItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -31,6 +25,20 @@ function AppSidebarContent() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { profile, signOut } = useAuth();
+  
+  const { data: unreadFlagsCount } = useQuery({
+    queryKey: ['unread-flags-count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('flags')
+        .select('*', { count: 'exact', head: true })
+        .eq('resolved', false)
+        .eq('seen_by_owner', false);
+      if (error) throw error;
+      return count || 0;
+    },
+    refetchInterval: 30000 // Poll every 30s
+  });
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
@@ -58,7 +66,16 @@ function AppSidebarContent() {
                       activeClassName="bg-sidebar-accent text-sidebar-foreground font-medium"
                     >
                       <item.icon className="h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
+                      {!collapsed && (
+                        <span className="flex items-center justify-between w-full">
+                          {item.title}
+                          {item.title === "Flags" && unreadFlagsCount && unreadFlagsCount > 0 ? (
+                            <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                              {unreadFlagsCount}
+                            </span>
+                          ) : null}
+                        </span>
+                      )}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -94,18 +111,25 @@ function AppSidebarContent() {
 }
 
 export default function AppLayout() {
+  useBackgroundEngine();
+  
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <AppSidebarContent />
         <div className="flex-1 flex flex-col">
-          <header className="h-14 flex items-center border-b bg-card px-4">
-            <SidebarTrigger className="mr-4">
-              <Menu className="h-5 w-5" />
-            </SidebarTrigger>
+          <header className="h-14 flex items-center justify-between border-b bg-card px-4 shrink-0">
+            <div className="flex items-center">
+              <SidebarTrigger className="mr-4">
+                <Menu className="h-5 w-5" />
+              </SidebarTrigger>
+            </div>
+            <GlobalSearch />
           </header>
           <main className="flex-1 p-6 overflow-auto">
-            <Outlet />
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
           </main>
         </div>
       </div>
