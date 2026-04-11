@@ -1,7 +1,6 @@
 import { LayoutDashboard, Users, CheckSquare, UserCog, Flag, BarChart3, Settings, LogOut, Menu } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
-import { useState } from "react";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Outlet } from "react-router-dom";
@@ -26,18 +25,17 @@ function AppSidebarContent() {
   const collapsed = state === "collapsed";
   const { profile, signOut } = useAuth();
   
-  const { data: unreadFlagsCount } = useQuery({
-    queryKey: ['unread-flags-count'],
+  const { data: openFlagsCount } = useQuery({
+    queryKey: ['open-flags-count'],
     queryFn: async () => {
       const { count, error } = await supabase
         .from('flags')
         .select('*', { count: 'exact', head: true })
-        .eq('resolved', false)
-        .eq('seen_by_owner', false);
+        .eq('status', 'open');
       if (error) throw error;
       return count || 0;
     },
-    refetchInterval: 30000 // Poll every 30s
+    refetchInterval: 30000
   });
 
   return (
@@ -69,9 +67,9 @@ function AppSidebarContent() {
                       {!collapsed && (
                         <span className="flex items-center justify-between w-full">
                           {item.title}
-                          {item.title === "Flags" && unreadFlagsCount && unreadFlagsCount > 0 ? (
+                          {item.title === "Flags" && openFlagsCount && openFlagsCount > 0 ? (
                             <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                              {unreadFlagsCount}
+                              {openFlagsCount}
                             </span>
                           ) : null}
                         </span>

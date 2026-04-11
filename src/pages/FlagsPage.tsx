@@ -25,18 +25,18 @@ export default function FlagsPage() {
         .from('flags')
         .select(`
           *,
-          clients (name),
-          services (name),
-          profiles!flags_assigned_manager_id_fkey (full_name)
+          clients (name)
         `)
-        .order('severity', { ascending: true }) // assuming 'critical' sorts before 'warning' alphabetically, or we can sort later
-        .order('triggered_date', { ascending: false });
+        .order('created_at', { ascending: false });
       
       if (error) throw error;
       
-      return data.sort((a, b) => {
-        if (a.severity === 'critical' && b.severity !== 'critical') return -1;
-        if (a.severity !== 'critical' && b.severity === 'critical') return 1;
+      // Sort: high priority first, then open before closed
+      return (data || []).sort((a, b) => {
+        if (a.status === 'open' && b.status !== 'open') return -1;
+        if (a.status !== 'open' && b.status === 'open') return 1;
+        if (a.priority === 'high' && b.priority !== 'high') return -1;
+        if (a.priority !== 'high' && b.priority === 'high') return 1;
         return 0;
       });
     }
@@ -44,6 +44,7 @@ export default function FlagsPage() {
 
   const filteredFlags = flags?.filter(f => 
     f.description?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    f.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     f.clients?.name?.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
@@ -53,9 +54,8 @@ export default function FlagsPage() {
       const { error } = await supabase
         .from('flags')
         .update({
-          resolved: true,
-          resolved_date: new Date().toISOString(),
-          resolved_note: resolutionNote
+          status: 'resolved',
+          description: resolvingFlag.description + (resolutionNote ? `\n\nResolution: ${resolutionNote}` : ''),
         })
         .eq('id', resolvingFlag.id);
 
@@ -64,6 +64,7 @@ export default function FlagsPage() {
       setResolvingFlag(null);
       setResolutionNote("");
       queryClient.invalidateQueries({ queryKey: ['flags-list'] });
+      queryClient.invalidateQueries({ queryKey: ['open-flags-count'] });
     } catch (err: any) {
       toast.error("Failed to resolve flag");
     }
@@ -74,7 +75,7 @@ export default function FlagsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">System Flags</h1>
-          <p className="text-muted-foreground mt-1">Monitor automated alerts, SLA breaches, and critical system warnings.</p>
+          <p className="text-muted-foreground mt-1">Monitor alerts, SLA breaches, and critical system warnings.</p>
         </div>
       </div>
 
@@ -98,49 +99,46 @@ export default function FlagsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Severity</TableHead>
-                <TableHead>Client & Service</TableHead>
-                <TableHead className="w-[30%]">Issue Description</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead>Client</TableHead>
+                <TableHead className="w-[30%]">Issue</TableHead>
                 <TableHead>Time Open</TableHead>
-                <TableHead>Manager</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredFlags?.map((flag) => (
-                <TableRow key={flag.id} className={flag.resolved ? "opacity-60 bg-muted/30" : ""}>
+                <TableRow key={flag.id} className={flag.status === 'resolved' ? "opacity-60 bg-muted/30" : ""}>
                   <TableCell>
-                    {flag.resolved ? (
-                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                        <ShieldCheck className="w-3 h-3 mr-1" /> Resolved
-                      </Badge>
-                    ) : (
-                      <Badge variant={flag.severity === 'critical' ? 'destructive' : 'secondary'} className="uppercase text-[10px] tracking-wider">
-                        {flag.severity === 'critical' && <AlertTriangle className="w-3 h-3 mr-1" />}
-                        {flag.severity || 'WARNING'}
-                      </Badge>
-                    )}
+                    <Badge variant={flag.priority === 'high' ? 'destructive' : 'secondary'} className="uppercase text-[10px] tracking-wider">
+                      {flag.priority === 'high' && <AlertTriangle className="w-3 h-3 mr-1" />}
+                      {flag.priority}
+                    </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-sm">{flag.clients?.name || 'System Wide'}</span>
-                      <span className="text-xs text-muted-foreground">{flag.services?.name || 'General Operation'}</span>
-                    </div>
+                    <span className="font-semibold text-sm">{flag.clients?.name || 'System Wide'}</span>
                   </TableCell>
                   <TableCell>
-                    <p className="text-sm font-medium">{flag.title || 'Automated System Flag'}</p>
+                    <p className="text-sm font-medium">{flag.title}</p>
                     <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{flag.description}</p>
                   </TableCell>
                   <TableCell>
                     <span className="text-sm font-medium">
-                      {flag.triggered_date ? formatDistanceToNow(new Date(flag.triggered_date)) : 'Unknown'}
+                      {formatDistanceToNow(new Date(flag.created_at))}
                     </span>
                   </TableCell>
                   <TableCell>
-                    <span className="text-sm">{flag.profiles?.full_name || 'Unassigned'}</span>
+                    {flag.status === 'resolved' ? (
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                        <ShieldCheck className="w-3 h-3 mr-1" /> Resolved
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline">Open</Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {!flag.resolved ? (
+                    {flag.status !== 'resolved' ? (
                       <Button size="sm" variant="outline" onClick={() => setResolvingFlag(flag)}>
                         Resolve
                       </Button>
@@ -155,7 +153,7 @@ export default function FlagsPage() {
               {filteredFlags?.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                    No active flags found! Beautiful.
+                    No flags found.
                   </TableCell>
                 </TableRow>
               )}
@@ -164,23 +162,22 @@ export default function FlagsPage() {
         </div>
       )}
 
-      {/* Resolution Modal */}
       <Dialog open={!!resolvingFlag} onOpenChange={(open) => !open && setResolvingFlag(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Resolve Flag</DialogTitle>
             <DialogDescription>
-              Mark this issue as resolved. Optionally, leave a note detailing the resolution for the permanent log.
+              Mark this issue as resolved. Optionally, leave a note.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
              <div className="bg-destructive/10 p-3 rounded-lg border border-destructive/20 text-sm">
-                <span className="font-semibold text-destructive uppercase text-xs">Issue details:</span>
-                <p className="mt-1 font-medium text-destructive">{resolvingFlag?.description}</p>
+                <span className="font-semibold text-destructive uppercase text-xs">Issue:</span>
+                <p className="mt-1 font-medium text-destructive">{resolvingFlag?.title}</p>
              </div>
              
              <div className="space-y-2">
-               <Label>Resolution Actions Taken</Label>
+               <Label>Resolution Note</Label>
                <Textarea 
                  placeholder="Describe what was done to fix this..." 
                  value={resolutionNote}

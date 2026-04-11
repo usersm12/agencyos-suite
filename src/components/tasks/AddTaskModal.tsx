@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Plus } from "lucide-react";
@@ -20,15 +19,11 @@ import { supabase } from "@/integrations/supabase/client";
 
 const addTaskSchema = z.object({
   title: z.string().min(2, "Title is required"),
-  client_id: z.string().min(1, "Client is required"),
-  service_id: z.string().optional(),
+  project_id: z.string().min(1, "Project is required"),
   assigned_to: z.string().optional(),
   due_date: z.date().optional(),
   priority: z.enum(["low", "medium", "high"]).default("medium"),
-  status: z.enum(["not_started", "in_progress", "completed", "blocked", "overdue"]).default("not_started"),
-  task_type: z.enum(["template", "adhoc"]).default("adhoc"),
-  client_requested: z.boolean().default(false),
-  notes: z.string().optional(),
+  description: z.string().optional(),
 });
 
 type AddTaskFormValues = z.infer<typeof addTaskSchema>;
@@ -41,31 +36,21 @@ export function AddTaskModal() {
     resolver: zodResolver(addTaskSchema),
     defaultValues: {
       title: "",
-      client_id: "",
-      service_id: undefined,
+      project_id: "",
       assigned_to: undefined,
       priority: "medium",
-      status: "not_started",
-      task_type: "adhoc",
-      client_requested: false,
-      notes: "",
+      description: "",
     },
   });
 
-  const { data: clients } = useQuery({
-    queryKey: ['clients-dropdown'],
+  const { data: projects } = useQuery({
+    queryKey: ['projects-dropdown'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('clients').select('id, name').order('name');
-      if (error) throw error;
-      return data;
-    }
-  });
-
-  const { data: services } = useQuery({
-    queryKey: ['services-dropdown'],
-    queryFn: async () => {
-      // In a real app we might fetch global services or client specific services
-      const { data, error } = await supabase.from('services').select('id, name');
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id, name, client_id, clients(name)')
+        .eq('status', 'active')
+        .order('name');
       if (error) throw error;
       return data;
     }
@@ -74,7 +59,7 @@ export function AddTaskModal() {
   const { data: team } = useQuery({
     queryKey: ['team-dropdown'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('id, full_name').eq('active', true);
+      const { data, error } = await supabase.from('profiles').select('id, full_name');
       if (error) throw error;
       return data;
     }
@@ -86,15 +71,11 @@ export function AddTaskModal() {
         .from('tasks')
         .insert({
           title: data.title,
-          client_id: data.client_id,
-          service_id: data.service_id || null,
+          project_id: data.project_id,
           assigned_to: data.assigned_to || null,
           due_date: data.due_date ? format(data.due_date, 'yyyy-MM-dd') : null,
           priority: data.priority,
-          status: data.status,
-          task_type: data.task_type,
-          client_requested: data.client_requested,
-          description: data.notes // mapped to description natively or notes? The table usually uses description
+          description: data.description || null,
         });
 
       if (error) throw error;
@@ -139,35 +120,20 @@ export function AddTaskModal() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="client_id"
+                name="project_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Client *</FormLabel>
+                    <FormLabel>Project *</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select a client" /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Select a project" /></SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {clients?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="service_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Service Type</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger><SelectValue placeholder="General / N/A" /></SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {services?.map(s => <SelectItem key={s.id} value={s.id}>{s.name || 'Unnamed Service'}</SelectItem>)}
+                        {projects?.map(p => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name} {p.clients?.name ? `(${p.clients.name})` : ''}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -238,47 +204,11 @@ export function AddTaskModal() {
                   </FormItem>
                 )}
               />
-
-              <FormField
-                control={form.control}
-                name="task_type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Task Type</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="adhoc">Ad-hoc (One off)</SelectItem>
-                        <SelectItem value="template">Template</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             </div>
 
             <FormField
               control={form.control}
-              name="client_requested"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
-                  <FormControl>
-                    <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>Client Requested</FormLabel>
-                    <p className="text-sm text-muted-foreground">Was this task specifically requested by the client?</p>
-                  </div>
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="notes"
+              name="description"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Description / Notes</FormLabel>

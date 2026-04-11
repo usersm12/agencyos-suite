@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,15 +12,19 @@ interface GoalsPerformanceProps {
   clientId: string;
 }
 
+interface TargetValue {
+  target?: number | string;
+  current?: number;
+  inverse?: boolean;
+}
+
 export function GoalsPerformance({ clientId }: GoalsPerformanceProps) {
   const queryClient = useQueryClient();
   const [goalInputs, setGoalInputs] = useState<Record<string, string>>({});
 
-  // 1. Fetch active services for this client to determine applicable goal types
   const { data: activeServices, isLoading: loadingServices } = useQuery({
     queryKey: ['client_services_with_goals', clientId],
     queryFn: async () => {
-      // Get all active services mapped to this client
       const { data: cServices, error: cServicesError } = await supabase
         .from('client_services')
         .select(`
@@ -33,34 +37,31 @@ export function GoalsPerformance({ clientId }: GoalsPerformanceProps) {
       if (cServicesError) throw cServicesError;
 
       const serviceIds = cServices?.map(cs => cs.service_id) || [];
-      
       if (serviceIds.length === 0) return [];
 
-      // Get all goal configurations linked to those active services
       const { data: goalTypes, error: gtError } = await supabase
         .from('service_goal_types')
         .select('*')
         .in('service_id', serviceIds);
-        
       if (gtError) throw gtError;
       
-      // Get client-specific goal targets
       const { data: clientGoals, error: cgError } = await supabase
         .from('client_goals')
         .select('*')
         .eq('client_id', clientId);
-        
       if (cgError) throw cgError;
 
-      // Map everything together
       return cServices.map(cs => {
         const matchingGoalTypes = goalTypes.filter(gt => gt.service_id === cs.service_id);
         const mappedTypes = matchingGoalTypes.map(gt => {
           const cGoal = clientGoals.find(cg => cg.service_goal_type_id === gt.id);
-          const targetValue = cGoal?.target_value?.target || "";
-          const currentValue = cGoal?.target_value?.current || 0;
+          const tv = cGoal?.target_value as TargetValue | null;
+          const targetValue = tv?.target || "";
+          const currentValue = tv?.current || 0;
+          const goalConfig = gt.goal_config as Record<string, unknown> | null;
           return {
             ...gt,
+            goal_config_parsed: goalConfig,
             client_goal_id: cGoal?.id,
             targetValue,
             currentValue
@@ -76,8 +77,7 @@ export function GoalsPerformance({ clientId }: GoalsPerformanceProps) {
   });
 
   const saveGoalMutation = useMutation({
-    mutationFn: async ({ serviceGoalTypeId, targetObj }: { serviceGoalTypeId: string, targetObj: any }) => {
-      // Find if we already exist
+    mutationFn: async ({ serviceGoalTypeId, targetObj }: { serviceGoalTypeId: string, targetObj: Record<string, unknown> }) => {
       const existing = await supabase.from('client_goals')
         .select('id, target_value')
         .eq('client_id', clientId)
@@ -85,8 +85,8 @@ export function GoalsPerformance({ clientId }: GoalsPerformanceProps) {
         .maybeSingle();
 
       if (existing.data) {
-        // Merge the new target with the current status (simulated tracking)
-        const updatedTarget = { ...existing.data.target_value, ...targetObj };
+        const prev = (existing.data.target_value as Record<string, unknown>) || {};
+        const updatedTarget = { ...prev, ...targetObj };
         const { error } = await supabase
           .from('client_goals')
           .update({ target_value: updatedTarget })
@@ -118,11 +118,8 @@ export function GoalsPerformance({ clientId }: GoalsPerformanceProps) {
   const handleSaveGoal = (goalTypeId: string) => {
     const val = goalInputs[goalTypeId];
     if (!val) return;
-    
-    // Attempt numeric conversion for math if applicable
     const num = Number(val);
     const targetPayload = isNaN(num) ? { target: val } : { target: num };
-    
     saveGoalMutation.mutate({ serviceGoalTypeId: goalTypeId, targetObj: targetPayload });
   };
 
@@ -149,16 +146,15 @@ export function GoalsPerformance({ clientId }: GoalsPerformanceProps) {
           <CardContent className="space-y-6">
             {serviceGroup.goalTypes.length > 0 ? (
               serviceGroup.goalTypes.map(gt => {
-                const isInverse = gt.goal_config?.inverse === true;
+                const isInverse = gt.goal_config_parsed?.inverse === true;
                 const isEditing = goalInputs[gt.id] !== undefined;
-                const valToDisplay = isEditing ? goalInputs[gt.id] : gt.targetValue;
+                const valToDisplay = isEditing ? goalInputs[gt.id] : String(gt.targetValue);
                 
-                // Demo progress logic assuming target is numeric
                 let percent = 0;
                 let isNumeric = false;
                 if (gt.targetValue && typeof gt.targetValue === 'number' && gt.currentValue !== undefined) {
                    isNumeric = true;
-                   percent = (gt.currentValue / gt.targetValue) * 100;
+                   percent = (gt.currentValue / (gt.targetValue as number)) * 100;
                 }
                 const boundedPercent = Math.min(Math.max(percent, 0), 100);
                 
@@ -182,7 +178,7 @@ export function GoalsPerformance({ clientId }: GoalsPerformanceProps) {
                         <p className="text-sm font-semibold">{gt.goal_name}</p>
                         {isNumeric && (
                           <div className="flex items-center gap-2 mt-1 w-full max-w-sm">
-                             <Progress value={boundedPercent} indicatorClassName={colorClass} className="h-2 flex-1" />
+                             <Progress value={boundedPercent} className="h-2 flex-1" />
                              <span className="text-[10px] whitespace-nowrap text-muted-foreground w-12 text-right">{Math.round(percent)}%</span>
                           </div>
                         )}

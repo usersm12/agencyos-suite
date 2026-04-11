@@ -6,15 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Check, ChevronsUpDown, UserPlus, X } from "lucide-react";
+import { UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 export function TeamAssignmentsSection({ clientId }: { clientId: string }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
-  // 1. Fetch current assignments
   const { data: assignments, isLoading: loadingAssignments } = useQuery({
     queryKey: ['team_assignments', clientId],
     queryFn: async () => {
@@ -35,14 +33,12 @@ export function TeamAssignmentsSection({ clientId }: { clientId: string }) {
     }
   });
 
-  // 2. Fetch all available team members
   const { data: teamMembers } = useQuery({
     queryKey: ['available-team'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, role')
-        .eq('active', true);
+        .select('id, full_name, role');
       if (error) throw error;
       return data || [];
     }
@@ -132,7 +128,7 @@ export function TeamAssignmentsSection({ clientId }: { clientId: string }) {
                 <span className="text-xs font-semibold">{assignment.profiles?.full_name}</span>
               </div>
               <button 
-                className="ml-1 text-muted-foreground hover:text-destructive transition-colors ml-auto flex p-0.5 rounded-full hover:bg-muted"
+                className="ml-1 text-muted-foreground hover:text-destructive transition-colors flex p-0.5 rounded-full hover:bg-muted"
                 onClick={() => removeMutation.mutate(assignment.id)}
               >
                 <X className="h-3 w-3" />
@@ -141,7 +137,7 @@ export function TeamAssignmentsSection({ clientId }: { clientId: string }) {
           ))}
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground italic">No team members are explicitly assigned. Only the Manager will receive direct routing defaults.</p>
+        <p className="text-sm text-muted-foreground italic">No team members are explicitly assigned.</p>
       )}
     </div>
   );

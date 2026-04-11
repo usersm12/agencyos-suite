@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,8 +12,7 @@ import { format } from "date-fns";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { MessageSquare, Paperclip, Send, CheckCircle2, Link as LinkIcon, Calendar } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { CheckCircle2 } from "lucide-react";
 
 interface TaskDetailPanelProps {
   taskId: string | null;
@@ -23,8 +21,6 @@ interface TaskDetailPanelProps {
 
 export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const [comment, setComment] = useState("");
 
   const { data: task, isLoading } = useQuery({
     queryKey: ['task', taskId],
@@ -34,8 +30,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
         .from('tasks')
         .select(`
           *,
-          clients (name),
-          services (name),
+          projects (name, client_id, clients (name)),
           profiles!tasks_assigned_to_fkey (full_name)
         `)
         .eq('id', taskId)
@@ -47,19 +42,14 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
     enabled: !!taskId
   });
 
-  const { data: comments } = useQuery({
-    queryKey: ['task_comments', taskId],
+  const { data: deliverables } = useQuery({
+    queryKey: ['task_deliverables', taskId],
     queryFn: async () => {
       if (!taskId) return [];
       const { data, error } = await supabase
-        .from('task_comments')
-        .select(`
-          *,
-          profiles (full_name)
-        `)
-        .eq('task_id', taskId)
-        .order('created_at', { ascending: true });
-      
+        .from('task_deliverables')
+        .select('*')
+        .eq('task_id', taskId);
       if (error) throw error;
       return data;
     },
@@ -76,25 +66,6 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
       queryClient.invalidateQueries({ queryKey: ['task', taskId] });
     } catch (err: any) {
       toast.error(err.message || "Failed to update status");
-    }
-  };
-
-  const submitComment = async () => {
-    if (!comment.trim() || !taskId || !user) return;
-    
-    try {
-      const { error } = await supabase.from('task_comments').insert({
-        task_id: taskId,
-        profile_id: user.id,
-        content: comment.trim()
-      });
-      
-      if (error) throw error;
-      setComment("");
-      toast.success("Comment added");
-      queryClient.invalidateQueries({ queryKey: ['task_comments', taskId] });
-    } catch (err: any) {
-      toast.error(err.message || "Failed to add comment");
     }
   };
 
@@ -115,9 +86,11 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{task.clients?.name}</span>
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      {(task.projects as any)?.clients?.name || 'No Client'}
+                    </span>
                     <span className="text-xs text-muted-foreground">&bull;</span>
-                    <span className="text-xs text-muted-foreground">{task.services?.name || 'General'}</span>
+                    <span className="text-xs text-muted-foreground">{(task.projects as any)?.name || 'No Project'}</span>
                   </div>
                   <SheetTitle className="text-2xl leading-tight">{task.title}</SheetTitle>
                 </div>
@@ -132,7 +105,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="not_started">Not Started</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="in_progress">In Progress</SelectItem>
                     <SelectItem value="blocked">Blocked</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
@@ -168,104 +141,37 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
               </div>
             </div>
 
-            <Tabs defaultValue="details" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 mb-6">
-                <TabsTrigger value="details">Details & Deliverables</TabsTrigger>
-                <TabsTrigger value="comments">Comments ({comments?.length || 0})</TabsTrigger>
-                <TabsTrigger value="backlinks">Backlink Log</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="details" className="space-y-6">
-                <div>
-                  <h4 className="text-sm font-semibold mb-2">Description / Notes</h4>
-                  <div className="bg-muted/10 border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap">
-                    {task.description || "No description provided."}
-                  </div>
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-sm font-semibold mb-2">Description / Notes</h4>
+                <div className="bg-muted/10 border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap">
+                  {task.description || "No description provided."}
                 </div>
+              </div>
 
-                <Separator />
+              <Separator />
 
-                <div>
-                  <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
-                    <CheckCircle2 className="w-5 h-5 text-green-500" />
-                    Deliverables Record
-                  </h4>
-                  <div className="grid gap-4">
-                     {/* MOCK DELIVERABLE FORM - Real integration parses `task_deliverables` */}
-                     {(task.services?.name?.toLowerCase().includes('seo') || true) && (
-                       <div className="space-y-4 rounded-xl border p-4 bg-card">
-                         <div className="grid grid-cols-2 gap-4">
-                           <div className="space-y-2">
-                             <Label>Keywords Updated</Label>
-                             <Input type="number" placeholder="Count" />
-                           </div>
-                           <div className="space-y-2">
-                             <Label>Content Published (URLs)</Label>
-                             <Input placeholder="List URLs..." />
-                           </div>
-                         </div>
-                         <Button variant="outline" className="w-full text-xs" size="sm">Save SEO Deliverables</Button>
-                       </div>
-                     )}
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="comments" className="relative h-[450px] flex flex-col">
-                <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
-                  {comments?.map((comment: any) => (
-                    <div key={comment.id} className="flex gap-3">
-                      <Avatar className="w-8 h-8 mt-1">
-                        <AvatarFallback className="text-xs bg-muted text-muted-foreground">
-                          {comment.profiles?.full_name?.substring(0,2).toUpperCase() || 'UN'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="bg-muted/30 border rounded-xl p-3 flex-1 text-sm">
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="font-semibold">{comment.profiles?.full_name || 'User'}</span>
-                          <span className="text-xs text-muted-foreground">{format(new Date(comment.created_at), 'MMM d, h:mm a')}</span>
-                        </div>
-                        <p className="whitespace-pre-wrap">{comment.content}</p>
+              <div>
+                <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
+                  <CheckCircle2 className="w-5 h-5 text-green-500" />
+                  Deliverables ({deliverables?.length || 0})
+                </h4>
+                {deliverables && deliverables.length > 0 ? (
+                  <div className="space-y-3">
+                    {deliverables.map(d => (
+                      <div key={d.id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <span className="text-sm font-medium">{d.deliverable_name}</span>
+                        <Badge variant={d.status === 'completed' ? 'default' : 'outline'}>{d.status}</Badge>
                       </div>
-                    </div>
-                  ))}
-                  {comments?.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                      <MessageSquare className="w-8 h-8 mb-2 opacity-20" />
-                      <p className="text-sm">No comments yet</p>
-                    </div>
-                  )}
-                </div>
-                <div className="mt-auto border-t pt-4">
-                  <div className="flex items-end gap-2">
-                    <Textarea 
-                      placeholder="Add a comment..." 
-                      className="min-h-[80px] resize-none"
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          submitComment();
-                        }
-                      }}
-                    />
-                    <Button size="icon" className="mb-1" onClick={submitComment} disabled={!comment.trim()}>
-                      <Send className="w-4 h-4" />
-                    </Button>
+                    ))}
                   </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="backlinks">
-                <div className="rounded-xl border border-dashed flex flex-col items-center justify-center h-64 bg-card/50">
-                  <LinkIcon className="w-8 h-8 mb-3 text-muted-foreground opacity-50" />
-                  <h3 className="font-medium">Backlink Log</h3>
-                  <p className="text-sm text-muted-foreground mt-1">Specific to active SEO campaigns.</p>
-                  <Button className="mt-4" size="sm" variant="outline">Add Entry</Button>
-                </div>
-              </TabsContent>
-            </Tabs>
+                ) : (
+                  <div className="p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+                    No deliverables linked to this task yet.
+                  </div>
+                )}
+              </div>
+            </div>
           </>
         ) : null}
       </SheetContent>
