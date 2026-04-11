@@ -85,8 +85,9 @@ export function GoalsPerformance({ clientId }: GoalsPerformanceProps) {
         .maybeSingle();
 
       if (existing.data) {
-        const prev = (existing.data.target_value as Record<string, unknown>) || {};
-        const updatedTarget = { ...prev, ...targetObj };
+        const prev = (typeof existing.data.target_value === 'object' && existing.data.target_value && !Array.isArray(existing.data.target_value)) 
+          ? existing.data.target_value as Record<string, unknown> : {};
+        const updatedTarget = { ...prev, ...targetObj } as Record<string, unknown>;
         const { error } = await supabase
           .from('client_goals')
           .update({ target_value: updatedTarget })
