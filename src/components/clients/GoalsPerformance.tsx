@@ -99,7 +99,7 @@ export function GoalsPerformance({ clientId }: GoalsPerformanceProps) {
           .insert({
             client_id: clientId,
             service_goal_type_id: serviceGoalTypeId,
-            target_value: { current: 0, ...targetObj }
+            target_value: { current: 0, ...targetObj } as unknown as import('@/integrations/supabase/types').Json
           });
         if (error) throw error;
       }
