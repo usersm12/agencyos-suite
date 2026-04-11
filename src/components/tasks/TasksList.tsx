@@ -72,15 +72,12 @@ export function TasksList({ tasks, onTaskClick }: TasksListProps) {
                 <TableCell className="font-medium">
                   <div className="flex flex-col">
                     <span>{task.title}</span>
-                    {task.task_type === 'template' && (
-                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">Template Instance</span>
-                    )}
                   </div>
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-col">
-                    <span className="font-medium text-sm">{task.clients?.name || 'No Client'}</span>
-                    <span className="text-xs text-muted-foreground">{task.services?.name || 'General Task'}</span>
+                    <span className="font-medium text-sm">{task.projects?.clients?.name || 'No Client'}</span>
+                    <span className="text-xs text-muted-foreground">{task.projects?.name || 'No Project'}</span>
                   </div>
                 </TableCell>
                 <TableCell>

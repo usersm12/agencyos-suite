@@ -1,16 +1,15 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Check, Plus, Settings2, Trash2, Mail } from "lucide-react";
-import { toast } from "sonner";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Check, Mail } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import ServicesMaster from "@/components/settings/ServicesMaster";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("services");
@@ -20,35 +19,12 @@ export default function SettingsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select(`
-          *,
-          profiles:manager_id (full_name)
-        `)
+        .select('*')
         .order('full_name');
       if (error) throw error;
       return data || [];
     }
   });
-
-  const { data: services, isLoading: isLoadingServices } = useQuery({
-    queryKey: ['services-master'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('services').select('*').order('created_at', { ascending: true });
-      if (error) throw error;
-      return data;
-    }
-  });
-
-  const toggleServiceActive = async (id: string, current: boolean) => {
-    try {
-      const { error } = await supabase.from('services').update({ is_active: !current }).eq('id', id);
-      if (error) throw error;
-      toast.success("Service status updated");
-      // Optionally invalidate query
-    } catch (err) {
-      toast.error("Failed to update service status");
-    }
-  };
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
@@ -66,55 +42,8 @@ export default function SettingsPage() {
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
         </TabsList>
         
-        <TabsContent value="services" className="space-y-4">
-          <div className="flex justify-between items-center bg-muted/20 p-4 border rounded-xl shadow-sm">
-            <div>
-              <h3 className="font-semibold">Core Services Map</h3>
-              <p className="text-sm text-muted-foreground">Define what deliverables you offer. This configures the entire platform.</p>
-            </div>
-            <Button className="gap-2 shrink-0"><Plus className="w-4 h-4" /> Add Service</Button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {isLoadingServices ? (
-               [1,2,3].map(i => <div key={i} className="h-40 bg-muted/20 animate-pulse border rounded-xl" />)
-            ) : services?.map(service => (
-               <Card key={service.id} className={!service.is_active ? "opacity-60 grayscale" : ""}>
-                 <CardHeader className="pb-3 border-b border-border/40">
-                   <div className="flex justify-between items-start">
-                     <CardTitle className="text-lg">{service.name}</CardTitle>
-                     <Switch 
-                       checked={service.is_active || false} 
-                       onCheckedChange={() => toggleServiceActive(service.id, !!service.is_active)}
-                     />
-                   </div>
-                 </CardHeader>
-                 <CardContent className="pt-4">
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap gap-2">
-                        {service.name.toLowerCase().includes('seo') && (
-                           <>
-                             <Badge variant="secondary" className="text-xs">Keywords</Badge>
-                             <Badge variant="secondary" className="text-xs">Backlinks</Badge>
-                           </>
-                         )}
-                        {service.name.toLowerCase().includes('ad') && (
-                           <>
-                             <Badge variant="secondary" className="text-xs">ROAS</Badge>
-                             <Badge variant="secondary" className="text-xs">Spend</Badge>
-                           </>
-                         )}
-                         <Badge variant="outline" className="text-xs border-dashed"><Plus className="w-3 h-3 mr-1" /> Variable</Badge>
-                      </div>
-                    </div>
-                 </CardContent>
-                 <CardFooter className="bg-muted/10 pt-4 flex justify-between">
-                    <span className="text-xs text-muted-foreground font-medium">Global mapping synced</span>
-                    <Button variant="ghost" size="icon" className="h-6 w-6"><Settings2 className="w-3 h-3" /></Button>
-                 </CardFooter>
-               </Card>
-            ))}
-          </div>
+        <TabsContent value="services">
+          <ServicesMaster />
         </TabsContent>
 
         <TabsContent value="team" className="space-y-4">
@@ -122,7 +51,7 @@ export default function SettingsPage() {
             <CardHeader className="flex flex-row items-start justify-between">
               <div>
                 <CardTitle>Team Roster</CardTitle>
-                <CardDescription>Manage active members, roles, capacities, and line managers.</CardDescription>
+                <CardDescription>Manage active members and roles.</CardDescription>
               </div>
               <Button className="gap-2 shrink-0"><Mail className="w-4 h-4" /> Invite by Email</Button>
             </CardHeader>
@@ -136,8 +65,7 @@ export default function SettingsPage() {
                       <tr className="bg-muted/50 text-left text-sm font-medium text-muted-foreground">
                         <th className="px-4 py-3">Member</th>
                         <th className="px-4 py-3">Role</th>
-                        <th className="px-4 py-3">Capacity</th>
-                        <th className="px-4 py-3">Manager</th>
+                        <th className="px-4 py-3">Joined</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border bg-card">
@@ -147,16 +75,14 @@ export default function SettingsPage() {
                              <Avatar className="h-8 w-8">
                                 <AvatarFallback className="text-[10px]">{tm.full_name?.substring(0, 2).toUpperCase()}</AvatarFallback>
                              </Avatar>
-                             <div className="flex flex-col">
-                               <span className="font-semibold">{tm.full_name}</span>
-                               <span className="text-xs text-muted-foreground">{tm.email || 'No email onboarded'}</span>
-                             </div>
+                             <span className="font-semibold">{tm.full_name}</span>
                            </td>
                            <td className="px-4 py-3 text-sm">
                              <Badge variant="outline" className="uppercase text-[10px]">{tm.role?.replace('_', ' ')}</Badge>
                            </td>
-                           <td className="px-4 py-3 text-sm">{tm.capacity} tasks MTD</td>
-                           <td className="px-4 py-3 text-sm text-muted-foreground">{tm.profiles?.full_name || 'Owner'}</td>
+                           <td className="px-4 py-3 text-sm text-muted-foreground">
+                             {new Date(tm.created_at).toLocaleDateString()}
+                           </td>
                          </tr>
                       ))}
                     </tbody>
@@ -177,7 +103,7 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label>Daily Executive Briefing</Label>
-                  <p className="text-sm text-muted-foreground">Receive a 8AM digest of yesterday's deliverables.</p>
+                  <p className="text-sm text-muted-foreground">Receive an 8AM digest of yesterday's deliverables.</p>
                 </div>
                 <Switch defaultChecked />
               </div>
