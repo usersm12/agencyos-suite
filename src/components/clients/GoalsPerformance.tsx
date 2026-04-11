@@ -87,10 +87,10 @@ export function GoalsPerformance({ clientId }: GoalsPerformanceProps) {
       if (existing.data) {
         const prev = (typeof existing.data.target_value === 'object' && existing.data.target_value && !Array.isArray(existing.data.target_value)) 
           ? existing.data.target_value as Record<string, unknown> : {};
-        const updatedTarget = { ...prev, ...targetObj } as Record<string, unknown>;
+        const updatedTarget = { ...prev, ...targetObj };
         const { error } = await supabase
           .from('client_goals')
-          .update({ target_value: updatedTarget })
+          .update({ target_value: updatedTarget as unknown as import('@/integrations/supabase/types').Json })
           .eq('id', existing.data.id);
         if (error) throw error;
       } else {
