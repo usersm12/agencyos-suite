@@ -78,7 +78,7 @@ export function TasksKanban({ tasks, onTaskClick }: TasksKanbanProps) {
                 >
                   <div className="flex justify-between items-start mb-2">
                     <span className="text-xs font-medium text-muted-foreground truncate pr-2">
-                      {task.clients?.name || 'No Client'}
+                      {task.projects?.clients?.name || 'No Client'}
                     </span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${getPriorityColor(task.priority)}`}>
                       {task.priority?.toUpperCase() || 'MEDIUM'}
