@@ -10,6 +10,9 @@ import { GoalsPerformance } from "@/components/clients/GoalsPerformance";
 import { ClientCredentials } from "@/components/clients/ClientCredentials";
 import { GoogleSearchConsole } from "@/components/integrations/GoogleSearchConsole";
 import { GoogleAnalytics } from "@/components/integrations/GoogleAnalytics";
+import { ClientEditModal } from "@/components/clients/ClientEditModal";
+import { TeamAssignmentsSection } from "@/components/clients/TeamAssignmentsSection";
+import { ActiveServicesSection } from "@/components/clients/ActiveServicesSection";
 
 export default function ClientProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -61,7 +64,7 @@ export default function ClientProfilePage() {
               <Settings className="mr-2 h-4 w-4" />
               Settings
             </Button>
-            <Button>Edit Profile</Button>
+            <ClientEditModal clientId={id!} clientData={client} />
           </div>
         </div>
 
@@ -115,21 +118,9 @@ export default function ClientProfilePage() {
               </TabsList>
               
               <TabsContent value="overview" className="space-y-4">
-                <div className="rounded-xl border bg-card text-card-foreground shadow p-6">
-                  <h3 className="font-semibold mb-4 text-lg">Active Services</h3>
-                  {activeServices.length > 0 ? (
-                    <div className="grid gap-3 sm:grid-cols-2">
-                       {activeServices.map((service: string, i: number) => (
-                         <div key={i} className="flex items-center p-3 border rounded-lg bg-muted/40">
-                           <CheckCircle2 className="h-5 w-5 text-green-500 mr-3" />
-                           <span className="font-medium">{service}</span>
-                         </div>
-                       ))}
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground text-sm">No active services assigned yet.</p>
-                  )}
-                </div>
+                <TeamAssignmentsSection clientId={id!} />
+                
+                <ActiveServicesSection clientId={id!} />
                 
                 {client.notes && (
                   <div className="rounded-xl border bg-card text-card-foreground shadow p-6">

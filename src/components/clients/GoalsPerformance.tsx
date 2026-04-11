@@ -1,127 +1,221 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { Save, AlertCircle } from "lucide-react";
 
 interface GoalsPerformanceProps {
   clientId: string;
 }
 
 export function GoalsPerformance({ clientId }: GoalsPerformanceProps) {
-  // In a real app, this would be a complex join fetching client_goals and actual metrics from client_integration_metrics
-  // We'll mock the resulting joined data for the UI demonstration based on the spec
-  const { data, isLoading } = useQuery({
-    queryKey: ['client-goals', clientId],
+  const queryClient = useQueryClient();
+  const [goalInputs, setGoalInputs] = useState<Record<string, string>>({});
+
+  // 1. Fetch active services for this client to determine applicable goal types
+  const { data: activeServices, isLoading: loadingServices } = useQuery({
+    queryKey: ['client_services_with_goals', clientId],
     queryFn: async () => {
-      // Simulate API delay
-      await new Promise(r => setTimeout(r, 600));
-      return {
-        seoTraffic: { current: 15200, target: 20000 },
-        gscClicks: { current: 8400, target: 10000 },
-        metaCPL: { current: 45, target: 40, inverse: true }, // lower is better
-        backlinks: { current: 12, target: 15 }
-      };
+      // Get all active services mapped to this client
+      const { data: cServices, error: cServicesError } = await supabase
+        .from('client_services')
+        .select(`
+          service_id,
+          services ( name, id )
+        `)
+        .eq('client_id', clientId)
+        .eq('is_active', true);
+      
+      if (cServicesError) throw cServicesError;
+
+      const serviceIds = cServices?.map(cs => cs.service_id) || [];
+      
+      if (serviceIds.length === 0) return [];
+
+      // Get all goal configurations linked to those active services
+      const { data: goalTypes, error: gtError } = await supabase
+        .from('service_goal_types')
+        .select('*')
+        .in('service_id', serviceIds);
+        
+      if (gtError) throw gtError;
+      
+      // Get client-specific goal targets
+      const { data: clientGoals, error: cgError } = await supabase
+        .from('client_goals')
+        .select('*')
+        .eq('client_id', clientId);
+        
+      if (cgError) throw cgError;
+
+      // Map everything together
+      return cServices.map(cs => {
+        const matchingGoalTypes = goalTypes.filter(gt => gt.service_id === cs.service_id);
+        const mappedTypes = matchingGoalTypes.map(gt => {
+          const cGoal = clientGoals.find(cg => cg.service_goal_type_id === gt.id);
+          const targetValue = cGoal?.target_value?.target || "";
+          const currentValue = cGoal?.target_value?.current || 0;
+          return {
+            ...gt,
+            client_goal_id: cGoal?.id,
+            targetValue,
+            currentValue
+          };
+        });
+        
+        return {
+          service: cs.services,
+          goalTypes: mappedTypes
+        };
+      });
     }
   });
 
-  const getProgressColor = (percent: number, inverse = false) => {
-    if (inverse) {
-      if (percent <= 100) return "bg-green-500";
-      if (percent <= 125) return "bg-amber-500";
-      return "bg-red-500";
-    }
-    if (percent >= 100) return "bg-green-500";
-    if (percent >= 75) return "bg-amber-500";
-    return "bg-red-500";
+  const saveGoalMutation = useMutation({
+    mutationFn: async ({ serviceGoalTypeId, targetObj }: { serviceGoalTypeId: string, targetObj: any }) => {
+      // Find if we already exist
+      const existing = await supabase.from('client_goals')
+        .select('id, target_value')
+        .eq('client_id', clientId)
+        .eq('service_goal_type_id', serviceGoalTypeId)
+        .maybeSingle();
+
+      if (existing.data) {
+        // Merge the new target with the current status (simulated tracking)
+        const updatedTarget = { ...existing.data.target_value, ...targetObj };
+        const { error } = await supabase
+          .from('client_goals')
+          .update({ target_value: updatedTarget })
+          .eq('id', existing.data.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('client_goals')
+          .insert({
+            client_id: clientId,
+            service_goal_type_id: serviceGoalTypeId,
+            target_value: { current: 0, ...targetObj }
+          });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client_services_with_goals', clientId] });
+      toast.success("Goal metrics saved");
+      setGoalInputs({});
+    },
+    onError: (err: any) => toast.error("Failed to save goal: " + err.message)
+  });
+
+  const handleInputChange = (goalTypeId: string, val: string) => {
+    setGoalInputs(prev => ({ ...prev, [goalTypeId]: val }));
   };
 
-  if (isLoading || !data) return <div className="p-4">Loading goals...</div>;
-
-  const renderGoal = (title: string, current: number, target: number, format: 'number' | 'currency' = 'number', inverse = false) => {
-    let percent = (current / target) * 100;
-    const boundedPercent = Math.min(Math.max(percent, 0), 100);
-    const colorClass = getProgressColor(percent, inverse);
+  const handleSaveGoal = (goalTypeId: string) => {
+    const val = goalInputs[goalTypeId];
+    if (!val) return;
     
-    // For inverse like CPL, higher % might mean progress is over 100, which is bad. 
-    // We visually clamp it to 100% full, but keep the color logic.
+    // Attempt numeric conversion for math if applicable
+    const num = Number(val);
+    const targetPayload = isNaN(num) ? { target: val } : { target: num };
     
-    const displayCurrent = format === 'currency' ? `$${current}` : current.toLocaleString();
-    const displayTarget = format === 'currency' ? `$${target}` : target.toLocaleString();
+    saveGoalMutation.mutate({ serviceGoalTypeId: goalTypeId, targetObj: targetPayload });
+  };
 
+  if (loadingServices) return <div className="p-4 bg-card rounded-xl shadow animate-pulse h-40"></div>;
+
+  if (!activeServices || activeServices.length === 0) {
     return (
-      <div className="space-y-2">
-        <div className="flex justify-between items-end">
-          <div className="space-y-1">
-            <p className="text-sm font-medium leading-none">{title}</p>
-            <p className="text-sm text-muted-foreground">
-              {displayCurrent} / {displayTarget} target
-            </p>
-          </div>
-          <p className="text-sm font-medium">{Math.round(percent)}% to goal</p>
-        </div>
-        <Progress value={boundedPercent} indicatorClassName={colorClass} className="h-2" />
+      <div className="p-6 bg-card border rounded-xl shadow text-center">
+        <AlertCircle className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-50" />
+        <h3 className="font-semibold text-lg">No Goals Mapped</h3>
+        <p className="text-sm text-muted-foreground mt-1">Assign active services to this client in the Overview tab to configure goals.</p>
       </div>
     );
-  };
+  }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">SEO & Traffic Goals</CardTitle>
-          <CardDescription>Monthly targets from Google Analytics & GSC</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {renderGoal("Monthly Organic Sessions", data.seoTraffic.current, data.seoTraffic.target)}
-          {renderGoal("Search Console Clicks", data.gscClicks.current, data.gscClicks.target)}
-          {renderGoal("High Quality Backlinks", data.backlinks.current, data.backlinks.target)}
-        </CardContent>
-      </Card>
+    <div className="space-y-6">
+      {activeServices.map((serviceGroup) => (
+        <Card key={serviceGroup.service?.id}>
+          <CardHeader>
+            <CardTitle className="text-lg">{serviceGroup.service?.name} Goals</CardTitle>
+            <CardDescription>Configure service-level KPI targets mapped to execution.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {serviceGroup.goalTypes.length > 0 ? (
+              serviceGroup.goalTypes.map(gt => {
+                const isInverse = gt.goal_config?.inverse === true;
+                const isEditing = goalInputs[gt.id] !== undefined;
+                const valToDisplay = isEditing ? goalInputs[gt.id] : gt.targetValue;
+                
+                // Demo progress logic assuming target is numeric
+                let percent = 0;
+                let isNumeric = false;
+                if (gt.targetValue && typeof gt.targetValue === 'number' && gt.currentValue !== undefined) {
+                   isNumeric = true;
+                   percent = (gt.currentValue / gt.targetValue) * 100;
+                }
+                const boundedPercent = Math.min(Math.max(percent, 0), 100);
+                
+                let colorClass = "bg-primary";
+                if (isNumeric) {
+                  if (isInverse) {
+                    if (percent <= 100) colorClass = "bg-green-500";
+                    else if (percent <= 125) colorClass = "bg-amber-500";
+                    else colorClass = "bg-red-500";
+                  } else {
+                    if (percent >= 100) colorClass = "bg-green-500";
+                    else if (percent >= 75) colorClass = "bg-amber-500";
+                    else colorClass = "bg-red-500";
+                  }
+                }
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Paid Media Goals</CardTitle>
-          <CardDescription>Target performance metrics</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {renderGoal("Meta Ads CPL", data.metaCPL.current, data.metaCPL.target, 'currency', true)}
-        </CardContent>
-      </Card>
-
-      {/* Placeholder for Rankings */}
-      <Card className="col-span-1 md:col-span-2">
-        <CardHeader>
-          <CardTitle className="text-lg">Keyword Ranking Targets (SEO)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            <table className="min-w-full divide-y divide-border">
-              <thead>
-                <tr className="bg-muted/50">
-                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Keyword</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Target Position</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Current Position</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                <tr>
-                  <td className="px-4 py-3 text-sm">agency management software</td>
-                  <td className="px-4 py-3 text-sm">3</td>
-                  <td className="px-4 py-3 text-sm">2 <span className="text-green-500 text-xs ml-1">↑ 1</span></td>
-                  <td className="px-4 py-3 text-sm"><span className="text-green-600 font-medium bg-green-100 px-2 py-1 rounded">Achieved</span></td>
-                </tr>
-                <tr>
-                  <td className="px-4 py-3 text-sm">white label reporting</td>
-                  <td className="px-4 py-3 text-sm">1</td>
-                  <td className="px-4 py-3 text-sm">5 <span className="text-muted-foreground text-xs ml-1">-</span></td>
-                  <td className="px-4 py-3 text-sm"><span className="text-amber-600 font-medium bg-amber-100 px-2 py-1 rounded">In Progress</span></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                return (
+                  <div key={gt.id} className="space-y-3 pb-4 border-b last:border-0 last:pb-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold">{gt.goal_name}</p>
+                        {isNumeric && (
+                          <div className="flex items-center gap-2 mt-1 w-full max-w-sm">
+                             <Progress value={boundedPercent} indicatorClassName={colorClass} className="h-2 flex-1" />
+                             <span className="text-[10px] whitespace-nowrap text-muted-foreground w-12 text-right">{Math.round(percent)}%</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <div className="flex flex-col items-end">
+                          <span className="text-[10px] text-muted-foreground uppercase leading-none mb-1">Target</span>
+                          <Input 
+                            value={valToDisplay}
+                            onChange={(e) => handleInputChange(gt.id, e.target.value)}
+                            placeholder="Set target..."
+                            className="h-8 w-32 text-right font-mono"
+                          />
+                        </div>
+                        {isEditing && valToDisplay !== String(gt.targetValue) && (
+                          <Button size="icon" className="h-8 w-8 mt-[14px]" onClick={() => handleSaveGoal(gt.id)}>
+                            <Save className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+               <div className="p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+                  No goal parameters exist for this service. Configure them in Settings.
+               </div>
+            )}
+          </CardContent>
+        </Card>
+      ))}
     </div>
   );
 }

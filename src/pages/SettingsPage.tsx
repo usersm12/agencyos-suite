@@ -8,11 +8,27 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Check, Plus, Settings2, Trash2 } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Check, Plus, Settings2, Trash2, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("services");
+
+  const { data: teamMembers, isLoading: isLoadingTeam } = useQuery({
+    queryKey: ['settings-team'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select(`
+          *,
+          profiles:manager_id (full_name)
+        `)
+        .order('full_name');
+      if (error) throw error;
+      return data || [];
+    }
+  });
 
   const { data: services, isLoading: isLoadingServices } = useQuery({
     queryKey: ['services-master'],
@@ -103,22 +119,51 @@ export default function SettingsPage() {
 
         <TabsContent value="team" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Team Permissions</CardTitle>
-              <CardDescription>Manage capacity defaults and role enforcements globally.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4 max-w-lg">
-                <div className="grid gap-2">
-                  <Label>Default Team Capacity (Tasks MTD)</Label>
-                  <Input type="number" defaultValue="30" />
-                  <p className="text-xs text-muted-foreground">Applies immediately to new invites.</p>
-                </div>
+            <CardHeader className="flex flex-row items-start justify-between">
+              <div>
+                <CardTitle>Team Roster</CardTitle>
+                <CardDescription>Manage active members, roles, capacities, and line managers.</CardDescription>
               </div>
+              <Button className="gap-2 shrink-0"><Mail className="w-4 h-4" /> Invite by Email</Button>
+            </CardHeader>
+            <CardContent>
+              {isLoadingTeam ? (
+                <div className="h-40 bg-muted/20 animate-pulse border rounded-xl" />
+              ) : (
+                <div className="rounded-md border">
+                  <table className="min-w-full divide-y divide-border">
+                    <thead>
+                      <tr className="bg-muted/50 text-left text-sm font-medium text-muted-foreground">
+                        <th className="px-4 py-3">Member</th>
+                        <th className="px-4 py-3">Role</th>
+                        <th className="px-4 py-3">Capacity</th>
+                        <th className="px-4 py-3">Manager</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border bg-card">
+                      {teamMembers?.map((tm: any) => (
+                         <tr key={tm.id}>
+                           <td className="px-4 py-3 text-sm flex items-center gap-3">
+                             <Avatar className="h-8 w-8">
+                                <AvatarFallback className="text-[10px]">{tm.full_name?.substring(0, 2).toUpperCase()}</AvatarFallback>
+                             </Avatar>
+                             <div className="flex flex-col">
+                               <span className="font-semibold">{tm.full_name}</span>
+                               <span className="text-xs text-muted-foreground">{tm.email || 'No email onboarded'}</span>
+                             </div>
+                           </td>
+                           <td className="px-4 py-3 text-sm">
+                             <Badge variant="outline" className="uppercase text-[10px]">{tm.role?.replace('_', ' ')}</Badge>
+                           </td>
+                           <td className="px-4 py-3 text-sm">{tm.capacity} tasks MTD</td>
+                           <td className="px-4 py-3 text-sm text-muted-foreground">{tm.profiles?.full_name || 'Owner'}</td>
+                         </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
-            <CardFooter className="border-t pt-4">
-               <Button>Save Preferences</Button>
-            </CardFooter>
           </Card>
         </TabsContent>
 
