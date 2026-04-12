@@ -1,11 +1,7 @@
-import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
@@ -38,20 +34,6 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
         .eq('id', taskId)
         .single();
       
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!taskId
-  });
-
-  const { data: deliverables } = useQuery({
-    queryKey: ['task_deliverables', taskId],
-    queryFn: async () => {
-      if (!taskId) return [];
-      const { data, error } = await supabase
-        .from('task_deliverables')
-        .select('*')
-        .eq('task_id', taskId);
       if (error) throw error;
       return data;
     },
@@ -129,14 +111,14 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Assignee</p>
                 <div className="flex items-center gap-2">
-                  {task.profiles?.full_name ? (
+                  {(task.profiles as any)?.full_name ? (
                      <>
                       <Avatar className="w-5 h-5">
                         <AvatarFallback className="text-[10px] bg-primary/10 text-primary">
-                          {task.profiles.full_name.substring(0,2).toUpperCase()}
+                          {(task.profiles as any).full_name.substring(0,2).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
-                      <span className="text-sm font-medium truncate max-w-[80px]">{task.profiles.full_name}</span>
+                      <span className="text-sm font-medium truncate max-w-[80px]">{(task.profiles as any).full_name}</span>
                      </>
                   ) : <span className="text-sm italic">Unassigned</span>}
                 </div>

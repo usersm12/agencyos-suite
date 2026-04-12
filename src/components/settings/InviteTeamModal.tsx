@@ -2,7 +2,7 @@ import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Mail } from "lucide-react";
@@ -31,60 +31,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 const schema = z.object({
   email: z.string().email("Valid email required"),
   role: z.enum(["owner", "manager", "team_member"]).default("team_member"),
-  manager_id: z.string().optional().or(z.literal('none'))
 });
 
 export function InviteTeamModal() {
   const [open, setOpen] = useState(false);
-  const queryClient = useQueryClient();
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
     defaultValues: {
       email: "",
       role: "team_member",
-      manager_id: "none"
     },
   });
 
-  const { data: managers } = useQuery({
-    queryKey: ['team-managers-list'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, role')
-        .in('role', ['manager', 'owner']);
-      if (error) throw error;
-      return data || [];
-    }
-  });
-
-  const mutation = useMutation({
-    mutationFn: async (values: z.infer<typeof schema>) => {
-      // Mocking invite: insert a placeholder profile
-      // In a real app we'd trigger an edge function or Supabase Auth invite
-      
-      const { error } = await supabase.from('profiles').insert({
-        id: crypto.randomUUID(), // generate a fake UUID for placeholder
-        email: values.email,
-        full_name: values.email.split('@')[0], // placeholder name
-        role: values.role,
-        manager_id: values.manager_id === 'none' ? null : values.manager_id,
-        capacity: 30, // default
-        active: false // pending invite basically
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings-team'] });
-      toast.success("Placeholder invite generated");
-      form.reset();
-      setOpen(false);
-    },
-    onError: (err: any) => {
-      toast.error(err.message || "Failed to invite");
-    }
-  });
+  async function onSubmit(data: z.infer<typeof schema>) {
+    // Placeholder: real invite would use an edge function or Supabase Auth admin invite
+    toast.success(`Invite simulated for ${data.email} as ${data.role.replace('_', ' ')}`);
+    form.reset();
+    setOpen(false);
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -95,12 +60,12 @@ export function InviteTeamModal() {
         <DialogHeader>
           <DialogTitle>Invite Team Member</DialogTitle>
           <DialogDescription>
-             Send a magic link granting Agency access. (Mocked payload)
+             Send a magic link granting Agency access. (Simulated)
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit((d) => mutation.mutate(d))} className="space-y-4 pt-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
             <FormField
               control={form.control}
               name="email"
@@ -136,31 +101,9 @@ export function InviteTeamModal() {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="manager_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Reporting Manager</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || "none"}>
-                    <FormControl>
-                      <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="none">Unassigned / Self</SelectItem>
-                      {managers?.map((mgr) => (
-                         <SelectItem value={mgr.id} key={mgr.id}>{mgr.full_name} ({mgr.role.replace('_',' ')})</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             <DialogFooter className="pt-4">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={mutation.isPending}>Send Magic Link</Button>
+              <Button type="submit">Send Invite</Button>
             </DialogFooter>
           </form>
         </Form>

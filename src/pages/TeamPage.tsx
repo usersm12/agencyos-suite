@@ -14,23 +14,23 @@ export default function TeamPage() {
   const { data: teamMembers, isLoading } = useQuery({
     queryKey: ['team-members'],
     queryFn: async () => {
-      // Mocking the complex tasks JOIN manually since PostgREST needs explicit RPC for dynamic count maps without edge functions
       const { data, error } = await supabase
         .from('profiles')
-        .select(`
-          *,
-          manager:manager_id(full_name)
-        `);
+        .select('*')
+        .order('full_name');
       
       if (error) throw error;
-      
-      // Simulate tasks aggregate for the frontend since actual counts require extensive edge functions or raw SQL views
-      return data.map((profile: any) => {
-        // Randomly simulate loading metrics for visual testing
-        const assigned = Math.floor(Math.random() * 40);
-        const completed = Math.floor(Math.random() * assigned);
-        const capacity = profile.capacity || 30;
-        const utilRate = assigned > 0 ? (assigned / capacity) * 100 : 0;
+
+      // Get task counts per profile
+      const { data: tasks } = await supabase
+        .from('tasks')
+        .select('assigned_to, status');
+
+      return (data || []).map((profile: any) => {
+        const myTasks = (tasks || []).filter(t => t.assigned_to === profile.id);
+        const completed = myTasks.filter(t => t.status === 'completed').length;
+        const assigned = myTasks.length;
+        const utilRate = assigned > 0 ? (assigned / 30) * 100 : 0;
         
         return {
           ...profile,
@@ -78,15 +78,15 @@ export default function TeamPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Member</TableHead>
-                <TableHead>Role & Manager</TableHead>
+                <TableHead>Role</TableHead>
                 <TableHead>Tasks (MTD)</TableHead>
                 <TableHead className="w-[200px]">Utilization</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {teamMembers?.map((member) => (
-                <TableRow key={member.id} className={!member.active ? "opacity-50" : ""}>
+              {teamMembers?.map((member: any) => (
+                <TableRow key={member.id}>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar className="h-9 w-9">
@@ -97,19 +97,14 @@ export default function TeamPage() {
                       </Avatar>
                       <div className="flex flex-col">
                         <span className="font-medium text-sm">{member.full_name || 'Unnamed User'}</span>
-                        <span className="text-xs text-muted-foreground">{member.email || 'No email provided'}</span>
+                        <span className="text-xs text-muted-foreground capitalize">{member.role?.replace('_', ' ')}</span>
                       </div>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-col gap-1 items-start">
-                      <Badge variant="outline" className="text-xs uppercase bg-muted/50 tracking-wider">
-                        {member.role?.replace('_', ' ') || 'Team Member'}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground">
-                        Report: {member.manager?.full_name || 'Owner'}
-                      </span>
-                    </div>
+                    <Badge variant="outline" className="text-xs uppercase bg-muted/50 tracking-wider">
+                      {member.role?.replace('_', ' ') || 'Team Member'}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col">
@@ -121,7 +116,6 @@ export default function TeamPage() {
                     <div className="space-y-2">
                        <div className="flex items-center justify-between text-xs">
                          <span className="font-medium">{member.metrics.utilization}%</span>
-                         <span className="text-muted-foreground">Cap: {member.capacity || 30}</span>
                        </div>
                        <Progress value={Math.min(member.metrics.utilization, 100)} className={`h-2 ${getUtilColor(member.metrics.utilization)}`} />
                     </div>
@@ -138,9 +132,6 @@ export default function TeamPage() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="gap-2">
                           <Edit2 className="w-4 h-4" /> Edit Profile
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="gap-2 text-orange-600 focus:bg-orange-50">
-                          <ShieldAlert className="w-4 h-4" /> Deactivate Account
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

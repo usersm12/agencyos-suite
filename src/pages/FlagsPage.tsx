@@ -1,37 +1,130 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, AlertTriangle, ShieldCheck, CheckCircle2 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
+async function autoGenerateFlags() {
+  const now = new Date();
+  const todayStr = format(now, 'yyyy-MM-dd');
+
+  // 1. Check overdue tasks
+  const { data: overdueTasks } = await supabase
+    .from('tasks')
+    .select('id, title, due_date, project_id, projects(client_id, clients(name))')
+    .lt('due_date', todayStr)
+    .neq('status', 'completed');
+
+  if (overdueTasks) {
+    for (const task of overdueTasks) {
+      const dueDate = new Date(task.due_date!);
+      const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      const clientId = (task.projects as any)?.client_id;
+      if (!clientId) continue;
+
+      const priority = daysOverdue >= 3 ? 'high' : 'medium';
+      const title = `Task "${task.title}" overdue by ${daysOverdue} day(s)`;
+
+      // Check if flag already exists
+      const { data: existing } = await supabase
+        .from('flags')
+        .select('id')
+        .eq('client_id', clientId)
+        .eq('title', title)
+        .eq('status', 'open')
+        .maybeSingle();
+
+      if (!existing) {
+        await supabase.from('flags').insert({
+          client_id: clientId,
+          title,
+          description: `Task is ${daysOverdue} days past due date of ${format(dueDate, 'MMM d, yyyy')}.`,
+          priority,
+          status: 'open',
+        });
+      }
+    }
+  }
+
+  // 2. Clients with 0 completed tasks this month
+  const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd');
+  const { data: clients } = await supabase.from('clients').select('id, name').eq('status', 'active');
+  if (clients) {
+    for (const client of clients) {
+      const { data: projects } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('client_id', client.id);
+      
+      if (!projects || projects.length === 0) continue;
+      const projectIds = projects.map(p => p.id);
+
+      const { count } = await supabase
+        .from('tasks')
+        .select('*', { count: 'exact', head: true })
+        .in('project_id', projectIds)
+        .eq('status', 'completed')
+        .gte('updated_at', monthStart);
+
+      if ((count || 0) === 0) {
+        const title = `${client.name}: No tasks completed this month`;
+        const { data: existing } = await supabase
+          .from('flags')
+          .select('id')
+          .eq('client_id', client.id)
+          .eq('title', title)
+          .eq('status', 'open')
+          .maybeSingle();
+
+        if (!existing) {
+          await supabase.from('flags').insert({
+            client_id: client.id,
+            title,
+            description: `No tasks have been marked completed for ${client.name} since ${format(new Date(monthStart), 'MMM d')}.`,
+            priority: 'medium',
+            status: 'open',
+          });
+        }
+      }
+    }
+  }
+}
+
 export default function FlagsPage() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
+  const [severityFilter, setSeverityFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("open");
   const [resolvingFlag, setResolvingFlag] = useState<any | null>(null);
   const [resolutionNote, setResolutionNote] = useState("");
+
+  // Auto-generate flags on page load
+  useEffect(() => {
+    autoGenerateFlags().then(() => {
+      queryClient.invalidateQueries({ queryKey: ['flags-list'] });
+      queryClient.invalidateQueries({ queryKey: ['open-flags-count'] });
+    });
+  }, []);
 
   const { data: flags, isLoading } = useQuery({
     queryKey: ['flags-list'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('flags')
-        .select(`
-          *,
-          clients (name)
-        `)
+        .select('*, clients(name)')
         .order('created_at', { ascending: false });
       
       if (error) throw error;
       
-      // Sort: high priority first, then open before closed
       return (data || []).sort((a, b) => {
         if (a.status === 'open' && b.status !== 'open') return -1;
         if (a.status !== 'open' && b.status === 'open') return 1;
@@ -42,21 +135,25 @@ export default function FlagsPage() {
     }
   });
 
-  const filteredFlags = flags?.filter(f => 
-    f.description?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    f.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    f.clients?.name?.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
+  const filteredFlags = flags?.filter(f => {
+    const matchesSearch = !searchQuery || 
+      f.description?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      f.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (f.clients as any)?.name?.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesSeverity = severityFilter === 'all' || f.priority === severityFilter;
+    const matchesStatus = statusFilter === 'all' || f.status === statusFilter;
+    
+    return matchesSearch && matchesSeverity && matchesStatus;
+  }) || [];
 
   const handleResolve = async () => {
     if (!resolvingFlag) return;
     try {
+      const resolvedDesc = resolvingFlag.description + (resolutionNote ? `\n\nResolution: ${resolutionNote}` : '');
       const { error } = await supabase
         .from('flags')
-        .update({
-          status: 'resolved',
-          description: resolvingFlag.description + (resolutionNote ? `\n\nResolution: ${resolutionNote}` : ''),
-        })
+        .update({ status: 'resolved', description: resolvedDesc })
         .eq('id', resolvingFlag.id);
 
       if (error) throw error;
@@ -79,8 +176,8 @@ export default function FlagsPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 max-w-sm mb-6">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input 
             type="search" 
@@ -90,6 +187,22 @@ export default function FlagsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+        <Select value={severityFilter} onValueChange={setSeverityFilter}>
+          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Severity" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Severity</SelectItem>
+            <SelectItem value="high">Critical</SelectItem>
+            <SelectItem value="medium">Warning</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="open">Unresolved</SelectItem>
+            <SelectItem value="resolved">Resolved</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {isLoading ? (
@@ -99,25 +212,25 @@ export default function FlagsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Priority</TableHead>
+                <TableHead>Severity</TableHead>
                 <TableHead>Client</TableHead>
                 <TableHead className="w-[30%]">Issue</TableHead>
-                <TableHead>Time Open</TableHead>
+                <TableHead>Days Open</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredFlags?.map((flag) => (
+              {filteredFlags.map((flag) => (
                 <TableRow key={flag.id} className={flag.status === 'resolved' ? "opacity-60 bg-muted/30" : ""}>
                   <TableCell>
                     <Badge variant={flag.priority === 'high' ? 'destructive' : 'secondary'} className="uppercase text-[10px] tracking-wider">
                       {flag.priority === 'high' && <AlertTriangle className="w-3 h-3 mr-1" />}
-                      {flag.priority}
+                      {flag.priority === 'high' ? 'Critical' : 'Warning'}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <span className="font-semibold text-sm">{flag.clients?.name || 'System Wide'}</span>
+                    <span className="font-semibold text-sm">{(flag.clients as any)?.name || 'System Wide'}</span>
                   </TableCell>
                   <TableCell>
                     <p className="text-sm font-medium">{flag.title}</p>
@@ -150,7 +263,7 @@ export default function FlagsPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {filteredFlags?.length === 0 && (
+              {filteredFlags.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                     No flags found.
