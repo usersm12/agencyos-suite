@@ -20,6 +20,7 @@ import { supabase } from "@/integrations/supabase/client";
 const addTaskSchema = z.object({
   title: z.string().min(2, "Title is required"),
   project_id: z.string().min(1, "Project is required"),
+  service_type: z.string().optional(),
   assigned_to: z.string().optional(),
   due_date: z.date().optional(),
   priority: z.enum(["low", "medium", "high"]).default("medium"),
@@ -37,6 +38,7 @@ export function AddTaskModal() {
     defaultValues: {
       title: "",
       project_id: "",
+      service_type: undefined,
       assigned_to: undefined,
       priority: "medium",
       description: "",
@@ -52,9 +54,34 @@ export function AddTaskModal() {
         .eq('status', 'active')
         .order('name');
       if (error) throw error;
-      return data;
+      return data || [];
     }
   });
+
+  const { data: clients } = useQuery({
+    queryKey: ['clients-dropdown'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, name')
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: projects !== undefined && projects.length === 0
+  });
+
+  const displayOptions = projects && projects.length > 0 
+    ? projects.map(p => ({
+        id: p.id,
+        name: `${p.name} ${p.clients?.name ? `(${p.clients.name})` : ''}`,
+        type: 'project'
+      })) 
+    : clients?.map(c => ({
+        id: c.id,
+        name: c.name,
+        type: 'client'
+      })) || [];
 
   const { data: team } = useQuery({
     queryKey: ['team-dropdown'],
@@ -65,13 +92,52 @@ export function AddTaskModal() {
     }
   });
 
+  const SERVICES_LIST = [
+    "SEO",
+    "Google Ads",
+    "Meta Ads",
+    "Social Media",
+    "Web Development"
+  ];
+
   async function onSubmit(data: AddTaskFormValues) {
     try {
+      let finalProjectId = data.project_id;
+
+      // If we are using clients as the fallback selector, map it to a Project under the hood
+      if (projects !== undefined && projects.length === 0) {
+        let { data: existingProject } = await supabase
+          .from('projects')
+          .select('id')
+          .eq('client_id', data.project_id)
+          .limit(1)
+          .maybeSingle();
+
+        if (!existingProject) {
+          const clientName = clients?.find(c => c.id === data.project_id)?.name || 'Client';
+          const { data: newProject, error: projError } = await supabase
+            .from('projects')
+            .insert({
+              client_id: data.project_id,
+              name: `${clientName} Default Project`,
+              status: 'active'
+            })
+            .select('id')
+            .single();
+
+          if (projError) throw projError;
+          finalProjectId = newProject.id;
+        } else {
+          finalProjectId = existingProject.id;
+        }
+      }
+
       const { error } = await supabase
         .from('tasks')
         .insert({
           title: data.title,
-          project_id: data.project_id,
+          project_id: finalProjectId,
+          service_type: data.service_type || null,
           assigned_to: data.assigned_to || null,
           due_date: data.due_date ? format(data.due_date, 'yyyy-MM-dd') : null,
           priority: data.priority,
@@ -129,10 +195,31 @@ export function AddTaskModal() {
                         <SelectTrigger><SelectValue placeholder="Select a project" /></SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {projects?.map(p => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name} {p.clients?.name ? `(${p.clients.name})` : ''}
-                          </SelectItem>
+                        {displayOptions.map(option => (
+                           <SelectItem key={option.id} value={option.id}>
+                             {option.name}
+                           </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="service_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Service Type</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {SERVICES_LIST.map(service => (
+                          <SelectItem key={service} value={service}>{service}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

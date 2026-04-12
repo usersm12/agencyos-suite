@@ -436,9 +436,52 @@ export type Database = {
         }
         Relationships: []
       }
+      task_comments: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          task_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          task_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          task_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_comments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_comments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       task_deliverables: {
         Row: {
           created_at: string
+          data: Json | null
           deliverable_name: string
           id: string
           status: string
@@ -448,6 +491,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          data?: Json | null
           deliverable_name: string
           id?: string
           status?: string
@@ -457,6 +501,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          data?: Json | null
           deliverable_name?: string
           id?: string
           status?: string
@@ -484,6 +529,7 @@ export type Database = {
           priority: string
           project_id: string
           service_template_id: string | null
+          service_type: string | null
           status: string
           title: string
           updated_at: string
@@ -497,6 +543,7 @@ export type Database = {
           priority?: string
           project_id: string
           service_template_id?: string | null
+          service_type?: string | null
           status?: string
           title: string
           updated_at?: string
@@ -510,6 +557,7 @@ export type Database = {
           priority?: string
           project_id?: string
           service_template_id?: string | null
+          service_type?: string | null
           status?: string
           title?: string
           updated_at?: string

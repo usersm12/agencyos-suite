@@ -13,6 +13,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CheckCircle2 } from "lucide-react";
+import { TaskDeliverablesForm } from "./TaskDeliverablesForm";
+import { TaskComments } from "./TaskComments";
 
 interface TaskDetailPanelProps {
   taskId: string | null;
@@ -154,22 +156,24 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
               <div>
                 <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
                   <CheckCircle2 className="w-5 h-5 text-green-500" />
-                  Deliverables ({deliverables?.length || 0})
+                  Deliverables
                 </h4>
-                {deliverables && deliverables.length > 0 ? (
-                  <div className="space-y-3">
-                    {deliverables.map(d => (
-                      <div key={d.id} className="flex items-center justify-between p-3 border rounded-lg">
-                        <span className="text-sm font-medium">{d.deliverable_name}</span>
-                        <Badge variant={d.status === 'completed' ? 'default' : 'outline'}>{d.status}</Badge>
-                      </div>
-                    ))}
-                  </div>
+                {task.service_type ? (
+                  <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} />
                 ) : (
                   <div className="p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
-                    No deliverables linked to this task yet.
+                    No service type defined for this task. Cannot load specific deliverables.
                   </div>
                 )}
+              </div>
+
+              <Separator />
+
+              <div>
+                <h4 className="font-semibold mb-4">Comments</h4>
+                <div className="h-[400px] border rounded-lg p-4 bg-muted/10">
+                  <TaskComments taskId={task.id} />
+                </div>
               </div>
             </div>
           </>
