@@ -475,7 +475,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
-          }
+          },
         ]
       }
       task_deliverables: {
@@ -483,6 +483,7 @@ export type Database = {
           created_at: string
           data: Json | null
           deliverable_name: string
+          deliverable_type: string | null
           id: string
           status: string
           task_id: string
@@ -493,6 +494,7 @@ export type Database = {
           created_at?: string
           data?: Json | null
           deliverable_name: string
+          deliverable_type?: string | null
           id?: string
           status?: string
           task_id: string
@@ -503,6 +505,7 @@ export type Database = {
           created_at?: string
           data?: Json | null
           deliverable_name?: string
+          deliverable_type?: string | null
           id?: string
           status?: string
           task_id?: string
