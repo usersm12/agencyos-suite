@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Flag, ShieldCheck, DollarSign, Activity, Users, Settings } from "lucide-react";
+import { Flag, ShieldCheck, Activity } from "lucide-react";
+import { formatCurrency } from "@/lib/currencies";
 import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -14,6 +15,7 @@ interface ClientCardProps {
   activeServices: string[];
   openFlagsCount: number;
   monthlyRetainer: number;
+  currency?: string;
 }
 
 export function ClientCard({
@@ -24,7 +26,8 @@ export function ClientCard({
   managerName,
   activeServices,
   openFlagsCount,
-  monthlyRetainer
+  monthlyRetainer,
+  currency = 'USD',
 }: ClientCardProps) {
   const navigate = useNavigate();
 
@@ -63,9 +66,8 @@ export function ClientCard({
              <span>{managerName || "Unassigned"}</span>
            </div>
            
-           <span className="font-semibold flex items-center">
-             <DollarSign className="h-3 w-3 text-muted-foreground mr-1" />
-             {monthlyRetainer.toLocaleString()}
+           <span className="font-semibold text-sm">
+             {formatCurrency(monthlyRetainer, currency)}
            </span>
         </div>
 

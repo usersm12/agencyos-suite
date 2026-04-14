@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Pencil } from "lucide-react";
+import { CURRENCIES } from "@/lib/currencies";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +41,7 @@ const editClientSchema = z.object({
   contract_type: z.string().optional().or(z.literal('')),
   contract_start_date: z.string().optional().or(z.literal('')),
   monthly_retainer_value: z.coerce.number().optional().or(z.literal(0)),
+  currency: z.string().default('USD'),
   manager_id: z.string().optional().or(z.literal('')),
   status: z.enum(["active", "inactive", "onboarding"]).default("active"),
   notes: z.string().optional().or(z.literal('')),
@@ -69,6 +71,7 @@ export function ClientEditModal({ clientId, clientData, children }: ClientEditMo
       contract_type: "retainer",
       contract_start_date: "",
       monthly_retainer_value: 0,
+      currency: 'USD',
       manager_id: "",
       status: "active",
       notes: "",
@@ -88,6 +91,7 @@ export function ClientEditModal({ clientId, clientData, children }: ClientEditMo
         contract_type: clientData.contract_type || "retainer",
         contract_start_date: clientData.contract_start_date ? String(clientData.contract_start_date).split('T')[0] : "",
         monthly_retainer_value: clientData.monthly_retainer_value ? Number(clientData.monthly_retainer_value) : 0,
+        currency: clientData.currency || 'USD',
         manager_id: clientData.manager_id || "",
         status: clientData.status || "active",
         notes: clientData.notes || "",
@@ -121,6 +125,7 @@ export function ClientEditModal({ clientId, clientData, children }: ClientEditMo
           contract_type: data.contract_type || null,
           contract_start_date: data.contract_start_date || null,
           monthly_retainer_value: data.monthly_retainer_value ? Number(data.monthly_retainer_value) : null,
+          currency: data.currency || 'USD',
           manager_id: data.manager_id || null,
           status: data.status,
           notes: data.notes || null,
@@ -242,19 +247,40 @@ export function ClientEditModal({ clientId, clientData, children }: ClientEditMo
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="monthly_retainer_value"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Monthly Retainer Value ($)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="5000" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <FormItem>
+                <FormLabel>Monthly Retainer Value</FormLabel>
+                <div className="flex gap-2">
+                  <FormField
+                    control={form.control}
+                    name="currency"
+                    render={({ field }) => (
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="w-[110px] shrink-0">
+                            <SelectValue placeholder="Currency" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {CURRENCIES.map(c => (
+                            <SelectItem key={c.code} value={c.code}>
+                              {c.symbol} {c.code}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="monthly_retainer_value"
+                    render={({ field }) => (
+                      <FormControl>
+                        <Input type="number" placeholder="5000" className="flex-1" {...field} />
+                      </FormControl>
+                    )}
+                  />
+                </div>
+              </FormItem>
 
               <FormField
                 control={form.control}

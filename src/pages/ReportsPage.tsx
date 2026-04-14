@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { formatCurrency } from "@/lib/currencies";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,7 +19,7 @@ export default function ReportsPage() {
   const { data: clients } = useQuery({
     queryKey: ['reports-clients'],
     queryFn: async () => {
-      const { data } = await supabase.from('clients').select('id, name, health_score, health_status, industry, monthly_retainer_value').order('name');
+      const { data } = await supabase.from('clients').select('id, name, health_score, health_status, industry, monthly_retainer_value, currency').order('name');
       return data || [];
     }
   });
@@ -105,7 +106,7 @@ export default function ReportsPage() {
   const handleExportCSV = () => {
     if (!clients) return;
     const headers = ['Client', 'Health Score', 'Health Status', 'Industry', 'MRR'];
-    const rows = clients.map(c => [c.name, c.health_score, c.health_status, c.industry || '', c.monthly_retainer_value || 0]);
+    const rows = clients.map(c => [c.name, c.health_score, c.health_status, c.industry || '', formatCurrency(c.monthly_retainer_value || 0, c.currency || 'USD')]);
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -243,7 +244,7 @@ export default function ReportsPage() {
                           {c.health_score >= 80 ? 'Green' : c.health_score >= 50 ? 'Amber' : 'Red'}
                         </Badge>
                       </TableCell>
-                      <TableCell>${(c.monthly_retainer_value || 0).toLocaleString()}</TableCell>
+                      <TableCell>{formatCurrency(c.monthly_retainer_value || 0, c.currency || 'USD')}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

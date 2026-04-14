@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# Environment variables (contain secrets)
+.env
+.env.*
+!.env.example
+
+# One-off data migration scripts (contain service role key)
+migrate-data.mjs
+import-data.mjs
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

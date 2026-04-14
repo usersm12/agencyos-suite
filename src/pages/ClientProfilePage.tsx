@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 import { GoalsPerformance } from "@/components/clients/GoalsPerformance";
+import { formatCurrency } from "@/lib/currencies";
 import { ClientCredentials } from "@/components/clients/ClientCredentials";
 import { GoogleSearchConsole } from "@/components/integrations/GoogleSearchConsole";
 import { GoogleAnalytics } from "@/components/integrations/GoogleAnalytics";
@@ -100,7 +101,7 @@ export default function ClientProfilePage() {
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-muted-foreground">MRR / Value</span>
-                <span className="font-medium">${(client.monthly_retainer_value || 0).toLocaleString()}</span>
+                <span className="font-medium">{formatCurrency(client.monthly_retainer_value || 0, client.currency || 'USD')}</span>
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-muted-foreground">Manager</span>

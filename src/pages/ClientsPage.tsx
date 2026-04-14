@@ -22,6 +22,7 @@ export default function ClientsPage() {
           industry,
           status,
           monthly_retainer_value,
+          currency,
           profiles!clients_manager_id_fkey (
             full_name
           ),
@@ -43,7 +44,8 @@ export default function ClientsPage() {
         managerName: c.profiles?.full_name || "Unassigned",
         activeServices: c.client_services?.map((cs: any) => cs.services?.name).filter(Boolean) || [],
         openFlagsCount: c.flags[0]?.count || 0,
-        monthlyRetainer: c.monthly_retainer_value || 0
+        monthlyRetainer: c.monthly_retainer_value || 0,
+        currency: c.currency || 'USD'
       }));
     }
   });

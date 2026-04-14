@@ -1,18 +1,22 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
-import { ShieldAlert, TrendingUp, Users, CheckSquare, Zap } from "lucide-react";
+import { ShieldAlert, TrendingUp, Users, CheckSquare, Zap, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { formatCurrency } from "@/lib/currencies";
 
 export default function DashboardPage() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [isGenerating, setIsGenerating] = useState(false);
   
   const { data: dashboardData, isLoading } = useQuery({
     queryKey: ['dashboard_metrics', profile?.role, profile?.id],
@@ -65,28 +69,91 @@ export default function DashboardPage() {
 
   // Monthly task generation handler
   const handleGenerateMonthlyTasks = async () => {
+    if (isGenerating) return;
+    setIsGenerating(true);
     try {
       const now = new Date();
       const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       const monthLabel = format(now, 'MMMM yyyy');
 
+      console.log('--- Generating Tasks for', monthLabel, '---');
+
+      const { count: globalServicesCount, error: gErr } = await supabase.from('client_services').select('id', { count: 'exact', head: true }).eq('is_active', true);
+      console.log('Global active services count:', globalServicesCount, gErr);
+      if (globalServicesCount === 0 || globalServicesCount === null) {
+        toast.warning("No clients have active services assigned. Please assign services to active clients first.");
+        setIsGenerating(false);
+        return;
+      }
+
+      // Check and seed templates if empty
+      const { data: existingTemplates } = await supabase.from('service_task_templates').select('id').limit(1);
+      console.log('Existing templates count (max 1):', existingTemplates?.length);
+      
+      if (!existingTemplates || existingTemplates.length === 0) {
+        console.log('Seeding service task templates...');
+        const { data: services } = await supabase.from('services').select('id, name');
+        if (services) {
+          const presets: Record<string, string[]> = {
+            'seo': ['Keyword Rankings Check', 'Backlink Building', 'Technical Audit', 'Content Publishing', 'Search Console Review', 'Monthly Report Sent'],
+            'google ads': ['Campaign Performance Review', 'Budget Utilisation Check', 'Ad Copy Refresh', 'Negative Keywords Update'],
+            'meta ads': ['Campaign Review', 'Audience Refresh', 'Creative Performance Review', 'Budget Pacing Check'],
+            'social media': ['Content Calendar Approval', 'Posts Publishing', 'Engagement Report', 'Follower Count Update'],
+            'web development': ['Project Status Update', 'Client Review Meeting', 'Milestone Check'],
+            'web dev': ['Project Status Update', 'Client Review Meeting', 'Milestone Check']
+          };
+          const insertPayloads: any[] = [];
+          for (const s of services) {
+            const tasks = presets[s.name.toLowerCase()] || [];
+            tasks.forEach((t, i) => {
+              insertPayloads.push({
+                service_id: s.id,
+                template_name: t,
+                sort_order: i
+              });
+            });
+          }
+          if (insertPayloads.length > 0) {
+            console.log('Inserting', insertPayloads.length, 'templates');
+            await supabase.from('service_task_templates').insert(insertPayloads);
+          }
+        }
+      }
+
       const { data: activeClients } = await supabase.from('clients').select('id, name').eq('status', 'active');
+      console.log('Active clients found:', activeClients?.length);
+      
       if (!activeClients || activeClients.length === 0) {
         toast.info("No active clients found");
+        setIsGenerating(false);
         return;
       }
 
       let generatedCount = 0;
+      let csCount = 0;
+      let ttCount = 0;
+      let debugLog: string[] = [];
+      const errLog = (msg: string) => { console.error(msg); debugLog.push(msg); };
+
+      debugLog.push(`Found ${activeClients.length} active clients.`);
 
       for (const client of activeClients) {
+        console.log(`Processing client: ${client.name} (${client.id})`);
+        
         // Get active services for this client
-        const { data: clientServices } = await supabase
+        const { data: clientServices, error: csErr } = await supabase
           .from('client_services')
           .select('service_id, services(name)')
           .eq('client_id', client.id)
           .eq('is_active', true);
 
-        if (!clientServices || clientServices.length === 0) continue;
+        if (csErr) errLog(`CS Error for ${client.name}: ${csErr.message}`);
+        
+        const count = clientServices?.length || 0;
+        csCount += count;
+        console.log(` - Services found for ${client.name}: ${count}`);
+        
+        if (count === 0) continue;
 
         // Get or create project
         let { data: project } = await supabase
@@ -97,26 +164,37 @@ export default function DashboardPage() {
           .maybeSingle();
 
         if (!project) {
+          console.log(' - Creating default project for', client.name);
           const { data: newProj, error: projErr } = await supabase
             .from('projects')
             .insert({ client_id: client.id, name: `${client.name} Default Project`, status: 'active' })
             .select('id')
             .single();
-          if (projErr) continue;
+          if (projErr) {
+            console.error(' - Project creation failed:', projErr);
+            continue;
+          }
           project = newProj;
         }
 
         for (const cs of clientServices) {
           const serviceName = (cs.services as any)?.name || 'Service';
+          console.log(`   - Processing service: ${serviceName} (ID: ${cs.service_id})`);
           
           // Get templates for this service
-          const { data: templates } = await supabase
+          const { data: templates, error: tmplErr } = await supabase
             .from('service_task_templates')
-            .select('*')
+            .select('id, template_name')
             .eq('service_id', cs.service_id)
             .order('sort_order');
 
-          if (!templates || templates.length === 0) continue;
+          if (tmplErr) errLog(`Template Error for ${serviceName}: ${tmplErr.message}`);
+          
+          const tCount = templates?.length || 0;
+          ttCount += tCount;
+          console.log(`     - Templates found: ${tCount}`);
+          
+          if (tCount === 0) continue;
 
           for (const template of templates) {
             const title = `${template.template_name} - ${monthLabel}`;
@@ -130,24 +208,45 @@ export default function DashboardPage() {
               .maybeSingle();
 
             if (!existing) {
-              await supabase.from('tasks').insert({
+              const insertData = {
                 title,
                 project_id: project!.id,
                 service_type: serviceName,
                 due_date: format(lastDay, 'yyyy-MM-dd'),
                 status: 'pending',
                 priority: 'medium',
-                service_template_id: template.id,
-              });
-              generatedCount++;
+                service_template_id: template.id
+              };
+              console.log('       - Creating task with payload:', insertData);
+              const { error: insErr } = await supabase.from('tasks').insert(insertData);
+              if (insErr) {
+                 errLog(`Insert Error for "${title}": ${insErr.message}`);
+              } else {
+                 generatedCount++;
+                 console.log('       - Task created successfully');
+              }
+            } else {
+               console.log('       - Task already exists (skipping):', title);
             }
           }
         }
       }
 
-      toast.success(`Generated ${generatedCount} tasks for ${monthLabel}`);
+      console.log('--- Generation Complete! ---');
+      const finalMsg = `Debug Summary:\nClients: ${activeClients.length}\nClient Services: ${csCount}\nTemplates Fetched: ${ttCount}\nTasks Generated: ${generatedCount}\nErrors: ${debugLog.filter(m => m.includes('Error')).length}`;
+      alert(finalMsg + (debugLog.length > 1 ? '\n\nLogs:\n' + debugLog.join('\n') : ''));
+      
+      if (generatedCount > 0) {
+        toast.success(`Generated ${generatedCount} tasks for ${monthLabel}`);
+        queryClient.invalidateQueries({ queryKey: ['dashboard_metrics'] });
+        queryClient.invalidateQueries({ queryKey: ['tasks-list'] });
+      } else {
+        toast.info("No new tasks needed to be generated.");
+      }
     } catch (err: any) {
       toast.error(err.message || "Failed to generate tasks");
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -261,7 +360,10 @@ export default function DashboardPage() {
             <h1 className="text-3xl font-bold tracking-tight mb-1">Hello, {greeting}</h1>
             <p className="text-muted-foreground">{dateStr}</p>
           </div>
-          <Button onClick={handleGenerateMonthlyTasks} className="gap-2"><Zap className="w-4 h-4" /> Generate Monthly Tasks</Button>
+          <Button onClick={handleGenerateMonthlyTasks} disabled={isGenerating} className="gap-2">
+            {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+            Generate Monthly Tasks
+          </Button>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
@@ -335,7 +437,10 @@ export default function DashboardPage() {
         </div>
         
         <div className="flex gap-3 flex-wrap">
-          <Button onClick={handleGenerateMonthlyTasks} variant="outline" className="gap-2"><Zap className="w-4 h-4" /> Generate Monthly Tasks</Button>
+          <Button onClick={handleGenerateMonthlyTasks} disabled={isGenerating} variant="outline" className="gap-2">
+            {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+            Generate Monthly Tasks
+          </Button>
            {metrics.openFlags > 0 && (
              <Button variant="destructive" className="gap-2" onClick={() => navigate('/flags')}>
                <ShieldAlert className="w-4 h-4" /> {metrics.openFlags} Open Flags
@@ -433,7 +538,7 @@ export default function DashboardPage() {
                  <div key={c.id} className="flex justify-between items-center text-sm cursor-pointer hover:bg-muted/30 p-2 rounded" onClick={() => navigate(`/clients/${c.id}`)}>
                     <div className="flex flex-col">
                       <span className="font-semibold">{c.name}</span>
-                      <span className="text-xs text-muted-foreground">MRR: ${(c.monthly_retainer_value || 0).toLocaleString()}</span>
+                      <span className="text-xs text-muted-foreground">MRR: {formatCurrency(c.monthly_retainer_value || 0, c.currency || 'USD')}</span>
                     </div>
                     <Badge variant="outline" className="bg-red-50 text-red-700">At Risk</Badge>
                  </div>
