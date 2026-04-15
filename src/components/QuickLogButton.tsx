@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -137,17 +138,20 @@ export function QuickLogButton() {
     return false;
   };
 
+  const floatingBtn = (
+    <button
+      onClick={() => setOpen(true)}
+      className="fixed bottom-6 right-6 z-[9999] flex items-center justify-center w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 hover:scale-105 active:scale-95 transition-all duration-150"
+      title="Quick log"
+      aria-label="Quick log"
+    >
+      <Plus className="h-6 w-6" />
+    </button>
+  );
+
   return (
     <>
-      {/* Floating button */}
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 hover:scale-105 active:scale-95 transition-all duration-150"
-        title="Quick log"
-        aria-label="Quick log"
-      >
-        <Plus className="h-6 w-6" />
-      </button>
+      {createPortal(floatingBtn, document.body)}
 
       <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
         <DialogContent className="sm:max-w-[480px]">
