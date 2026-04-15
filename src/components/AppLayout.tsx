@@ -7,6 +7,7 @@ import { Outlet } from "react-router-dom";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useBackgroundEngine } from "@/hooks/useBackgroundEngine";
 import { GlobalSearch } from "@/components/GlobalSearch";
+import { QuickLogButton } from "@/components/QuickLogButton";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -131,6 +132,7 @@ export default function AppLayout() {
           </main>
         </div>
       </div>
+      <QuickLogButton />
     </SidebarProvider>
   );
 }

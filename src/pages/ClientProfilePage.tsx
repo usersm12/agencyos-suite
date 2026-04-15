@@ -14,6 +14,8 @@ import { GoogleAnalytics } from "@/components/integrations/GoogleAnalytics";
 import { ClientEditModal } from "@/components/clients/ClientEditModal";
 import { TeamAssignmentsSection } from "@/components/clients/TeamAssignmentsSection";
 import { ActiveServicesSection } from "@/components/clients/ActiveServicesSection";
+import { BacklinkManager } from "@/components/clients/BacklinkManager";
+import { SocialPostLog } from "@/components/clients/SocialPostLog";
 
 export default function ClientProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -115,6 +117,8 @@ export default function ClientProfilePage() {
               <TabsList className="mb-4">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="goals">Performance vs Goals</TabsTrigger>
+                <TabsTrigger value="backlinks">Backlinks</TabsTrigger>
+                <TabsTrigger value="social">Social Posts</TabsTrigger>
                 <TabsTrigger value="integrations">Integrations & Credentials</TabsTrigger>
               </TabsList>
               
@@ -134,7 +138,15 @@ export default function ClientProfilePage() {
               <TabsContent value="goals" className="space-y-4">
                 <GoalsPerformance clientId={id!} />
               </TabsContent>
-              
+
+              <TabsContent value="backlinks" className="space-y-4">
+                <BacklinkManager clientId={id!} />
+              </TabsContent>
+
+              <TabsContent value="social" className="space-y-4">
+                <SocialPostLog clientId={id!} />
+              </TabsContent>
+
               <TabsContent value="integrations" className="space-y-6">
                  <ClientCredentials clientId={id!} />
                  <GoogleSearchConsole clientId={id!} />
