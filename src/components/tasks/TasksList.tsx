@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MoreHorizontal, Calendar, AlertCircle, Trash2, BookOpen, CheckCircle, XCircle, Clock, Layers } from "lucide-react";
+import { MoreHorizontal, Calendar, AlertCircle, Trash2, BookOpen, CheckCircle, XCircle, Clock, Layers, Timer, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,6 +20,34 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Checkbox } from "@/components/ui/checkbox";
+
+const TIMER_KEY = (taskId: string) => `timer_start_${taskId}`;
+
+function useTaskTimer(taskId: string) {
+  const running = !!localStorage.getItem(TIMER_KEY(taskId));
+  const start = () => localStorage.setItem(TIMER_KEY(taskId), String(Date.now()));
+  const stop = async (profileId: string | null, clientId: string | null) => {
+    const stored = localStorage.getItem(TIMER_KEY(taskId));
+    localStorage.removeItem(TIMER_KEY(taskId));
+    const elapsed = stored ? Math.floor((Date.now() - Number(stored)) / 1000) : 60;
+    const durationMinutes = Math.max(1, Math.round(elapsed / 60));
+    await supabase.from("time_logs").insert({
+      task_id: taskId, client_id: clientId || null,
+      user_id: profileId || null,
+      started_at: stored ? new Date(Number(stored)).toISOString() : null,
+      ended_at: new Date().toISOString(),
+      duration_minutes: durationMinutes,
+    });
+  };
+  return { running, start, stop };
+}
+
+function fmtDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
 
 interface TasksListProps {
   tasks: any[];
@@ -39,6 +67,70 @@ const PRIORITY_OPTIONS = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
 ];
+
+function TaskRowTimer({ taskId, clientId }: { taskId: string; clientId: string | null }) {
+  const queryClient = useQueryClient();
+  const [running, setRunning] = useState(!!localStorage.getItem(TIMER_KEY(taskId)));
+
+  const { data: profile } = useQuery({
+    queryKey: ["my-profile"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase.from("profiles").select("id").eq("user_id", user.id).single();
+      return data;
+    },
+  });
+
+  const { data: totalMinutes = 0 } = useQuery({
+    queryKey: ["task-time-total", taskId],
+    queryFn: async () => {
+      const { data } = await supabase.from("time_logs").select("duration_minutes").eq("task_id", taskId);
+      return (data || []).reduce((s: number, l: any) => s + (l.duration_minutes || 0), 0);
+    },
+  });
+
+  const handleTimer = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (running) {
+      const stored = localStorage.getItem(TIMER_KEY(taskId));
+      localStorage.removeItem(TIMER_KEY(taskId));
+      setRunning(false);
+      const elapsed = stored ? Math.floor((Date.now() - Number(stored)) / 1000) : 60;
+      const durationMinutes = Math.max(1, Math.round(elapsed / 60));
+      await supabase.from("time_logs").insert({
+        task_id: taskId, client_id: clientId || null,
+        user_id: profile?.id || null,
+        started_at: stored ? new Date(Number(stored)).toISOString() : null,
+        ended_at: new Date().toISOString(),
+        duration_minutes: durationMinutes,
+      });
+      queryClient.invalidateQueries({ queryKey: ["task-time-total", taskId] });
+      queryClient.invalidateQueries({ queryKey: ["time-logs", taskId] });
+      toast.success(`Logged ${fmtDuration(durationMinutes)}`);
+    } else {
+      localStorage.setItem(TIMER_KEY(taskId), String(Date.now()));
+      setRunning(true);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1">
+      {totalMinutes > 0 && (
+        <span className="text-[10px] font-mono text-muted-foreground">{fmtDuration(totalMinutes)}</span>
+      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className={`h-6 w-6 p-0 ${running ? "text-red-500" : "text-muted-foreground hover:text-primary"}`}
+        onClick={handleTimer}
+        title={running ? "Stop timer" : "Start timer"}
+      >
+        {running ? <Square className="h-3 w-3" /> : <Timer className="h-3 w-3" />}
+      </Button>
+    </div>
+  );
+}
 
 export function TasksList({ tasks, onTaskClick, selectedIds = [], onSelectIds }: TasksListProps) {
   const queryClient = useQueryClient();
@@ -115,6 +207,7 @@ export function TasksList({ tasks, onTaskClick, selectedIds = [], onSelectIds }:
               <TableHead>Due Date</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead className="w-[70px]"><Clock className="h-3.5 w-3.5" /></TableHead>
               <TableHead className="text-right w-[80px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -280,6 +373,11 @@ export function TasksList({ tasks, onTaskClick, selectedIds = [], onSelectIds }:
                             {getStatusBadge(task.status)}
                           </div>
                         )}
+                      </TableCell>
+
+                      {/* Time badge + quick timer */}
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <TaskRowTimer taskId={task.id} clientId={(task.projects as any)?.client_id || null} />
                       </TableCell>
 
                       {/* Actions */}

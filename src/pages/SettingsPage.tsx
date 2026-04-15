@@ -10,6 +10,7 @@ import { Check, Mail } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import ServicesMaster from "@/components/settings/ServicesMaster";
+import { SOPSettings } from "@/components/settings/SOPSettings";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("services");
@@ -34,8 +35,9 @@ export default function SettingsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid grid-cols-3 md:grid-cols-5 w-full bg-muted/50 p-1">
+        <TabsList className="grid grid-cols-3 md:grid-cols-6 w-full bg-muted/50 p-1">
           <TabsTrigger value="services">Services Master</TabsTrigger>
+          <TabsTrigger value="sops">SOPs</TabsTrigger>
           <TabsTrigger value="team">Team Auth</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
           <TabsTrigger value="adhoc">Task Rules</TabsTrigger>
@@ -44,6 +46,10 @@ export default function SettingsPage() {
         
         <TabsContent value="services">
           <ServicesMaster />
+        </TabsContent>
+
+        <TabsContent value="sops">
+          <SOPSettings />
         </TabsContent>
 
         <TabsContent value="team" className="space-y-4">

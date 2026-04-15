@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { format } from "date-fns";
-import { ShieldAlert, TrendingUp, Users, CheckSquare, Zap, Loader2 } from "lucide-react";
+import { format, startOfMonth, endOfMonth } from "date-fns";
+import { ShieldAlert, TrendingUp, Users, CheckSquare, Zap, Loader2, Clock, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,77 @@ import { Progress } from "@/components/ui/progress";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/currencies";
+
+function fmtDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function AgencyTimeWidget({ clients }: { clients: any[] }) {
+  const now = new Date();
+  const { data: timeLogs = [] } = useQuery({
+    queryKey: ["dashboard-time-logs"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("time_logs")
+        .select("*, clients(name, monthly_retainer_value, currency)")
+        .gte("created_at", startOfMonth(now).toISOString())
+        .lte("created_at", endOfMonth(now).toISOString());
+      return data || [];
+    },
+  });
+
+  const totalMinutes = timeLogs.reduce((s: number, l: any) => s + (l.duration_minutes || 0), 0);
+
+  // Per-client hours
+  const byClient = Object.values(
+    timeLogs.reduce((map: Record<string, any>, l: any) => {
+      const cid = l.client_id || "unassigned";
+      const name = l.clients?.name || "Unassigned";
+      if (!map[cid]) map[cid] = { name, minutes: 0, retainer: l.clients?.monthly_retainer_value || 0, currency: l.clients?.currency || "USD" };
+      map[cid].minutes += l.duration_minutes || 0;
+      return map;
+    }, {})
+  ).sort((a: any, b: any) => b.minutes - a.minutes) as any[];
+
+  if (timeLogs.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Clock className="h-5 w-5 text-primary" />
+          Agency Hours — {format(now, "MMMM yyyy")}
+        </CardTitle>
+        <Badge variant="secondary" className="font-mono">{fmtDuration(totalMinutes)} total</Badge>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {byClient.slice(0, 8).map((c: any) => {
+            const hours = c.minutes / 60;
+            const coveredHours = c.retainer ? c.retainer / 50 : null;
+            const over = coveredHours !== null && hours > coveredHours;
+            return (
+              <div key={c.name} className="flex items-center gap-3">
+                <span className="text-sm font-medium w-36 truncate">{c.name}</span>
+                <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${over ? "bg-red-500" : "bg-primary"}`}
+                    style={{ width: `${coveredHours ? Math.min(100, (hours / coveredHours) * 100) : 100}%` }}
+                  />
+                </div>
+                <span className="text-xs font-mono text-muted-foreground w-14 text-right">{fmtDuration(c.minutes)}</span>
+                {over && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" title={`Over retainer by ${(hours - coveredHours!).toFixed(1)}h`} />}
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function DashboardPage() {
   const { profile } = useAuth();
@@ -590,6 +661,9 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Agency Time This Month */}
+      <AgencyTimeWidget clients={clients} />
 
       {/* Team Utilization */}
       <Card>
