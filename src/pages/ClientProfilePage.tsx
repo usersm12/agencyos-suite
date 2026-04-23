@@ -18,6 +18,7 @@ import { BacklinkManager } from "@/components/clients/BacklinkManager";
 import { SocialPostLog } from "@/components/clients/SocialPostLog";
 import { ClientDocuments } from "@/components/clients/ClientDocuments";
 import { ClientTimeReport } from "@/components/clients/ClientTimeReport";
+import { WebProjectMiniCard } from "@/components/webproject/WebProjectMiniCard";
 
 export default function ClientProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -127,10 +128,12 @@ export default function ClientProfilePage() {
               </TabsList>
               
               <TabsContent value="overview" className="space-y-4">
+                <WebProjectMiniCard clientId={id!} />
+
                 <TeamAssignmentsSection clientId={id!} />
-                
+
                 <ActiveServicesSection clientId={id!} />
-                
+
                 {client.notes && (
                   <div className="rounded-xl border bg-card text-card-foreground shadow p-6">
                     <h3 className="font-semibold mb-4 text-lg">Client Notes</h3>

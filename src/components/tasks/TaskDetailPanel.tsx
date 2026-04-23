@@ -3,17 +3,19 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Globe } from "lucide-react";
 import { TaskDeliverablesForm } from "./TaskDeliverablesForm";
 import { TaskComments } from "./TaskComments";
 import { TaskChecklist } from "./TaskChecklist";
 import { SOPGuide } from "./SOPGuide";
 import { TaskAttachments } from "./TaskAttachments";
 import { TimeTracker } from "./TimeTracker";
+import { WebProjectTab } from "@/components/webproject/WebProjectTab";
 
 interface TaskDetailPanelProps {
   taskId: string | null;
@@ -130,65 +132,117 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
               </div>
             </div>
 
-            <div className="space-y-6">
-              {/* Description */}
-              <div>
-                <h4 className="text-sm font-semibold mb-2">Description / Notes</h4>
-                <div className="bg-muted/10 border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap">
-                  {task.description || "No description provided."}
-                </div>
-              </div>
+            {/* Tab layout — Web tasks get an extra "Web Project" tab */}
+            {task.service_type?.toLowerCase().includes("web") ? (
+              <Tabs defaultValue="web" className="w-full">
+                <TabsList className="mb-4 w-full">
+                  <TabsTrigger value="web" className="flex items-center gap-1.5 flex-1">
+                    <Globe className="w-3.5 h-3.5" /> Web Project
+                  </TabsTrigger>
+                  <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
+                  <TabsTrigger value="comments" className="flex-1">Comments</TabsTrigger>
+                </TabsList>
 
-              <Separator />
+                <TabsContent value="web">
+                  <WebProjectTab taskId={task.id} clientId={clientId} />
+                </TabsContent>
 
-              {/* SOP Guide */}
-              {task.service_type && (
-                <>
-                  <SOPGuide serviceType={task.service_type} />
-                  <Separator />
-                </>
-              )}
-
-              {/* Checklist */}
-              <TaskChecklist taskId={task.id} serviceType={task.service_type} />
-
-              <Separator />
-
-              {/* Time Tracker */}
-              <TimeTracker taskId={task.id} clientId={clientId} />
-
-              <Separator />
-
-              {/* Attachments */}
-              <TaskAttachments taskId={task.id} />
-
-              <Separator />
-
-              {/* Deliverables */}
-              <div>
-                <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
-                  <CheckCircle2 className="w-5 h-5 text-green-500" />
-                  Deliverables
-                </h4>
-                {task.service_type ? (
-                  <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} />
-                ) : (
-                  <div className="p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
-                    No service type defined for this task.
+                <TabsContent value="details" className="space-y-6">
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Description / Notes</h4>
+                    <div className="bg-muted/10 border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap">
+                      {task.description || "No description provided."}
+                    </div>
                   </div>
+                  <Separator />
+                  {task.service_type && (
+                    <>
+                      <SOPGuide serviceType={task.service_type} />
+                      <Separator />
+                    </>
+                  )}
+                  <TaskChecklist taskId={task.id} serviceType={task.service_type} />
+                  <Separator />
+                  <TimeTracker taskId={task.id} clientId={clientId} />
+                  <Separator />
+                  <TaskAttachments taskId={task.id} />
+                  <Separator />
+                  <div>
+                    <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
+                      <CheckCircle2 className="w-5 h-5 text-green-500" />
+                      Deliverables
+                    </h4>
+                    <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="comments">
+                  <div className="h-[400px] border rounded-lg p-4 bg-muted/10">
+                    <TaskComments taskId={task.id} />
+                  </div>
+                </TabsContent>
+              </Tabs>
+            ) : (
+              <div className="space-y-6">
+                {/* Description */}
+                <div>
+                  <h4 className="text-sm font-semibold mb-2">Description / Notes</h4>
+                  <div className="bg-muted/10 border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap">
+                    {task.description || "No description provided."}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* SOP Guide */}
+                {task.service_type && (
+                  <>
+                    <SOPGuide serviceType={task.service_type} />
+                    <Separator />
+                  </>
                 )}
-              </div>
 
-              <Separator />
+                {/* Checklist */}
+                <TaskChecklist taskId={task.id} serviceType={task.service_type} />
 
-              {/* Comments */}
-              <div>
-                <h4 className="font-semibold mb-4">Comments</h4>
-                <div className="h-[400px] border rounded-lg p-4 bg-muted/10">
-                  <TaskComments taskId={task.id} />
+                <Separator />
+
+                {/* Time Tracker */}
+                <TimeTracker taskId={task.id} clientId={clientId} />
+
+                <Separator />
+
+                {/* Attachments */}
+                <TaskAttachments taskId={task.id} />
+
+                <Separator />
+
+                {/* Deliverables */}
+                <div>
+                  <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
+                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                    Deliverables
+                  </h4>
+                  {task.service_type ? (
+                    <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} />
+                  ) : (
+                    <div className="p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+                      No service type defined for this task.
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Comments */}
+                <div>
+                  <h4 className="font-semibold mb-4">Comments</h4>
+                  <div className="h-[400px] border rounded-lg p-4 bg-muted/10">
+                    <TaskComments taskId={task.id} />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </>
         ) : null}
       </SheetContent>

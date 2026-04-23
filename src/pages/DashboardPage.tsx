@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/currencies";
+import { WebProjectsPanel } from "@/components/webproject/WebProjectsPanel";
 
 function fmtDuration(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -670,6 +671,9 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Web Projects Panel */}
+      <WebProjectsPanel />
 
       {/* Agency Time This Month */}
       <AgencyTimeWidget clients={clients} />
