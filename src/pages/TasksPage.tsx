@@ -11,11 +11,13 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TasksList } from "@/components/tasks/TasksList";
 import { TasksKanban } from "@/components/tasks/TasksKanban";
 import { TaskDetailPanel } from "@/components/tasks/TaskDetailPanel";
+import { BulkActionToolbar } from "@/components/tasks/BulkActionToolbar";
 
 export default function TasksPage() {
   const [view, setView] = useState<"list" | "kanban">("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: ['tasks-list'],
@@ -68,13 +70,31 @@ export default function TasksPage() {
         </div>
       </div>
 
+      {filteredTasks.length > 0 && selectedTaskIds.length > 0 && (
+        <BulkActionToolbar 
+          selectedIds={selectedTaskIds}
+          tasks={filteredTasks}
+          onClearSelection={() => setSelectedTaskIds([])}
+        />
+      )}
+
       {isLoading ? (
         <div className="h-40 bg-card rounded-xl border animate-pulse" />
       ) : filteredTasks.length > 0 ? (
         view === "list" ? (
-          <TasksList tasks={filteredTasks} onTaskClick={setSelectedTaskId} />
+          <TasksList 
+            tasks={filteredTasks} 
+            onTaskClick={setSelectedTaskId} 
+            selectedIds={selectedTaskIds}
+            onSelectIds={setSelectedTaskIds}
+          />
         ) : (
-          <TasksKanban tasks={filteredTasks} onTaskClick={setSelectedTaskId} />
+          <TasksKanban 
+            tasks={filteredTasks} 
+            onTaskClick={setSelectedTaskId} 
+            selectedIds={selectedTaskIds}
+            onSelectIds={setSelectedTaskIds}
+          />
         )
       ) : (
         <div className="flex flex-col items-center justify-center h-64 border border-dashed rounded-xl bg-card/50">

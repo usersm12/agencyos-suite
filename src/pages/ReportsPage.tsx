@@ -16,13 +16,36 @@ export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState("agency");
   const [selectedClient, setSelectedClient] = useState<string>("all");
 
-  const { data: clients } = useQuery({
-    queryKey: ['reports-clients'],
+  const { data: allFlagsForHealth } = useQuery({
+    queryKey: ['reports-flags-health'],
     queryFn: async () => {
-      const { data } = await supabase.from('clients').select('id, name, health_score, health_status, industry, monthly_retainer_value, currency').order('name');
+      const { data } = await supabase.from('flags').select('client_id, status');
       return data || [];
     }
   });
+
+  const { data: rawClients } = useQuery({
+    queryKey: ['reports-clients'],
+    queryFn: async () => {
+      const { data } = await supabase.from('clients').select('id, name, industry, monthly_retainer_value, currency').order('name');
+      return data || [];
+    }
+  });
+
+  // Calculate health_score client-side from open flag counts
+  const clients = useMemo(() => {
+    if (!rawClients) return [];
+    const flagCountByClient: Record<string, number> = {};
+    (allFlagsForHealth || []).forEach((f: any) => {
+      if (f.client_id && f.status === 'open') {
+        flagCountByClient[f.client_id] = (flagCountByClient[f.client_id] || 0) + 1;
+      }
+    });
+    return rawClients.map((c: any) => ({
+      ...c,
+      health_score: Math.max(0, 100 - (flagCountByClient[c.id] || 0) * 15),
+    }));
+  }, [rawClients, allFlagsForHealth]);
 
   const { data: allTasks } = useQuery({
     queryKey: ['reports-tasks'],
@@ -106,7 +129,10 @@ export default function ReportsPage() {
   const handleExportCSV = () => {
     if (!clients) return;
     const headers = ['Client', 'Health Score', 'Health Status', 'Industry', 'MRR'];
-    const rows = clients.map(c => [c.name, c.health_score, c.health_status, c.industry || '', formatCurrency(c.monthly_retainer_value || 0, c.currency || 'USD')]);
+    const rows = clients.map((c: any) => {
+      const status = c.health_score >= 80 ? 'Green' : c.health_score >= 50 ? 'Amber' : 'Red';
+      return [c.name, c.health_score, status, c.industry || '', formatCurrency(c.monthly_retainer_value || 0, c.currency || 'USD')];
+    });
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);

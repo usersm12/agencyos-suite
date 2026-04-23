@@ -57,6 +57,7 @@ interface TasksListProps {
 }
 
 const STATUS_OPTIONS = [
+  { value: "pending", label: "Pending" },
   { value: "not_started", label: "Not Started" },
   { value: "in_progress", label: "In Progress" },
   { value: "blocked", label: "Blocked" },
@@ -168,6 +169,7 @@ export function TasksList({ tasks, onTaskClick, selectedIds = [], onSelectIds }:
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case "pending": return <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100 cursor-pointer">Pending</Badge>;
       case "in_progress": return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 cursor-pointer">In Progress</Badge>;
       case "completed": return <Badge className="bg-green-100 text-green-700 hover:bg-green-100 cursor-pointer">Completed</Badge>;
       case "blocked": return <Badge className="bg-red-100 text-red-700 hover:bg-red-100 cursor-pointer">Blocked</Badge>;

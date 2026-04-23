@@ -4,13 +4,16 @@ import { Calendar, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface TasksKanbanProps {
   tasks: any[];
   onTaskClick?: (id: string) => void;
+  selectedIds?: string[];
+  onSelectIds?: (ids: string[]) => void;
 }
 
-export function TasksKanban({ tasks, onTaskClick }: TasksKanbanProps) {
+export function TasksKanban({ tasks, onTaskClick, selectedIds = [], onSelectIds }: TasksKanbanProps) {
   const queryClient = useQueryClient();
   const columns = [
     { id: "not_started", title: "Not Started", color: "bg-gray-100 dark:bg-gray-800" },
@@ -74,9 +77,9 @@ export function TasksKanban({ tasks, onTaskClick }: TasksKanbanProps) {
                   draggable
                   onDragStart={(e) => handleDragStart(e, task.id)}
                   onClick={() => onTaskClick?.(task.id)}
-                  className="bg-card p-3 rounded-lg shadow-sm border cursor-grab hover:shadow-md transition-shadow"
+                  className={`bg-card p-3 rounded-lg shadow-sm border cursor-grab hover:shadow-md transition-shadow relative ${selectedIds.includes(task.id) ? 'ring-2 ring-primary ring-offset-1' : ''}`}
                 >
-                  <div className="flex justify-between items-start mb-2">
+                  <div className="flex justify-between items-start mb-2 pr-6">
                     <span className="text-xs font-medium text-muted-foreground truncate pr-2">
                       {task.projects?.clients?.name || 'No Client'}
                     </span>
@@ -84,6 +87,20 @@ export function TasksKanban({ tasks, onTaskClick }: TasksKanbanProps) {
                       {task.priority?.toUpperCase() || 'MEDIUM'}
                     </span>
                   </div>
+                  
+                  <div className="absolute top-2 right-2" onClick={e => e.stopPropagation()}>
+                    <Checkbox 
+                       checked={selectedIds.includes(task.id)}
+                       onCheckedChange={(checked) => {
+                         if (checked) {
+                           onSelectIds?.([...selectedIds, task.id]);
+                         } else {
+                           onSelectIds?.(selectedIds.filter(id => id !== task.id));
+                         }
+                       }}
+                    />
+                  </div>
+
                   
                   <h4 className="text-sm font-semibold mb-3 leading-snug">{task.title}</h4>
                   

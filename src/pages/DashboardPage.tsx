@@ -95,7 +95,7 @@ export default function DashboardPage() {
       const [clientsRes, tasksRes, flagsRes, profilesRes] = await Promise.all([
         supabase.from('clients').select('*'),
         supabase.from('tasks').select('*, projects(client_id, clients(name))'),
-        supabase.from('flags').select('*, clients(name)').eq('status', 'open'),
+        supabase.from('flags').select('*, clients(name)'),
         supabase.from('profiles').select('id, full_name, role'),
       ]);
       
@@ -103,12 +103,13 @@ export default function DashboardPage() {
       const allTasks = tasksRes.data || [];
       const allFlags = flagsRes.data || [];
       const allProfiles = profilesRes.data || [];
-      
+
       const isTeammate = profile?.role === 'team_member';
-      
+
       const relevantTasks = isTeammate ? allTasks.filter(t => t.assigned_to === profile?.id) : allTasks;
-      const relevantFlags = allFlags;
-      
+      const openFlags = allFlags.filter((f: any) => f.status === 'open');
+      const relevantFlags = openFlags;
+
       const completedTasks = relevantTasks.filter(t => t.status === 'completed');
       const overdueTasks = relevantTasks.filter(t => t.due_date && new Date(t.due_date) < new Date() && t.status !== 'completed');
       const completionRate = relevantTasks.length ? Math.round((completedTasks.length / relevantTasks.length) * 100) : 100;
@@ -116,18 +117,26 @@ export default function DashboardPage() {
       // Month completion
       const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
       const completedThisMonth = relevantTasks.filter(t => t.status === 'completed' && t.updated_at >= monthStart).length;
-      
+
+      // Calculate health_score client-side (flag count * 15 penalty, max 100)
+      const flagCountByClient: Record<string, number> = {};
+      allFlags.forEach((f: any) => { if (f.client_id) flagCountByClient[f.client_id] = (flagCountByClient[f.client_id] || 0) + 1; });
+      const clientsWithHealth = allClients.map((c: any) => ({
+        ...c,
+        health_score: Math.max(0, 100 - (flagCountByClient[c.id] || 0) * 15),
+      }));
+
       return {
-        clients: allClients,
+        clients: clientsWithHealth,
         tasks: relevantTasks,
         allTasks,
         flags: relevantFlags,
         profiles: allProfiles,
         metrics: {
-          totalClients: allClients.length,
-          greenClients: allClients.filter(c => c.health_score >= 80).length,
-          amberClients: allClients.filter(c => c.health_score >= 50 && c.health_score < 80).length,
-          redClients: allClients.filter(c => c.health_score < 50).length,
+          totalClients: clientsWithHealth.length,
+          greenClients: clientsWithHealth.filter((c: any) => c.health_score >= 80).length,
+          amberClients: clientsWithHealth.filter((c: any) => c.health_score >= 50 && c.health_score < 80).length,
+          redClients: clientsWithHealth.filter((c: any) => c.health_score < 50).length,
           completionRate,
           overdueCount: overdueTasks.length,
           openFlags: relevantFlags.length,

@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { InviteMemberModal } from "@/components/team/InviteMemberModal";
+import { EditProfileModal } from "@/components/team/EditProfileModal";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +13,9 @@ import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export default function TeamPage() {
+  const [editingMember, setEditingMember] = useState<any | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
   const { data: teamMembers, isLoading } = useQuery({
     queryKey: ['team-members'],
     queryFn: async () => {
@@ -18,7 +23,7 @@ export default function TeamPage() {
         .from('profiles')
         .select('*')
         .order('full_name');
-      
+
       if (error) throw error;
 
       // Get task counts per profile
@@ -31,7 +36,7 @@ export default function TeamPage() {
         const completed = myTasks.filter(t => t.status === 'completed').length;
         const assigned = myTasks.length;
         const utilRate = assigned > 0 ? (assigned / 30) * 100 : 0;
-        
+
         return {
           ...profile,
           metrics: {
@@ -51,6 +56,19 @@ export default function TeamPage() {
     return "bg-green-500 [&>div]:bg-green-500";
   };
 
+  const getRoleBadgeClass = (role: string) => {
+    switch (role) {
+      case "owner": return "border-purple-200 bg-purple-50 text-purple-700";
+      case "manager": return "border-blue-200 bg-blue-50 text-blue-700";
+      default: return "border-gray-200 bg-gray-50 text-gray-700";
+    }
+  };
+
+  const filtered = teamMembers?.filter(m =>
+    m.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    m.role?.toLowerCase().includes(searchQuery.toLowerCase())
+  ) || [];
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -66,7 +84,13 @@ export default function TeamPage() {
       <div className="flex items-center gap-2 max-w-sm mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input type="search" placeholder="Search team..." className="pl-8" />
+          <Input
+            type="search"
+            placeholder="Search team..."
+            className="pl-8"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
       </div>
 
@@ -85,7 +109,7 @@ export default function TeamPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {teamMembers?.map((member: any) => (
+              {filtered.map((member: any) => (
                 <TableRow key={member.id}>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -102,7 +126,7 @@ export default function TeamPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="text-xs uppercase bg-muted/50 tracking-wider">
+                    <Badge variant="outline" className={`text-xs uppercase tracking-wider ${getRoleBadgeClass(member.role)}`}>
                       {member.role?.replace('_', ' ') || 'Team Member'}
                     </Badge>
                   </TableCell>
@@ -130,7 +154,10 @@ export default function TeamPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Manage User</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem className="gap-2">
+                        <DropdownMenuItem
+                          className="gap-2 cursor-pointer"
+                          onClick={() => setEditingMember(member)}
+                        >
                           <Edit2 className="w-4 h-4" /> Edit Profile
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -138,16 +165,24 @@ export default function TeamPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {teamMembers?.length === 0 && (
+              {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
-                    No team members found.
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                    {searchQuery ? "No members match your search." : "No team members found."}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {editingMember && (
+        <EditProfileModal
+          member={editingMember}
+          open={!!editingMember}
+          onClose={() => setEditingMember(null)}
+        />
       )}
     </div>
   );
