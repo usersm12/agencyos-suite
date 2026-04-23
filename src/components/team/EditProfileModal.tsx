@@ -5,14 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, User } from "lucide-react";
+import { Loader2, User, KeyRound, Eye, EyeOff } from "lucide-react";
 
 interface EditProfileModalProps {
   member: {
-    id: string;
+    id: string;          // profiles.id
+    user_id: string;     // auth.users id — needed for password reset
     full_name: string | null;
     avatar_url: string | null;
     role: string;
@@ -23,18 +25,25 @@ interface EditProfileModalProps {
 
 export function EditProfileModal({ member, open, onClose }: EditProfileModalProps) {
   const queryClient = useQueryClient();
+
+  // Profile fields
   const [fullName, setFullName] = useState(member.full_name || "");
   const [role, setRole] = useState(member.role || "team_member");
-  const [saving, setSaving] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
 
-  const handleSave = async () => {
+  // Password fields
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+
+  const handleSaveProfile = async () => {
     if (!fullName.trim()) {
       toast.error("Name cannot be empty");
       return;
     }
-    setSaving(true);
+    setSavingProfile(true);
     try {
-      // Use SECURITY DEFINER RPC to bypass RLS — works for both self-edit and owner editing others
       const { data: result, error } = await supabase.rpc("update_profile_by_id", {
         p_profile_id: member.id,
         p_full_name: fullName.trim(),
@@ -52,7 +61,43 @@ export function EditProfileModal({ member, open, onClose }: EditProfileModalProp
     } catch (err: any) {
       toast.error(err.message || "Failed to update profile");
     } finally {
-      setSaving(false);
+      setSavingProfile(false);
+    }
+  };
+
+  const handleSetPassword = async () => {
+    if (!newPassword) {
+      toast.error("Enter a new password");
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("set-user-password", {
+        body: {
+          target_user_id: member.user_id,
+          new_password: newPassword,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success(`Password updated for ${member.full_name || "user"}`);
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to set password");
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -76,57 +121,115 @@ export function EditProfileModal({ member, open, onClose }: EditProfileModalProp
             </Avatar>
           </div>
 
-          {/* Full name */}
-          <div className="space-y-1.5">
-            <Label htmlFor="fullName">Full Name</Label>
-            <Input
-              id="fullName"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Enter full name..."
-              onKeyDown={(e) => e.key === "Enter" && handleSave()}
-            />
+          {/* ── Profile section ── */}
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="fullName">Full Name</Label>
+              <Input
+                id="fullName"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Enter full name..."
+                onKeyDown={(e) => e.key === "Enter" && handleSaveProfile()}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Role</Label>
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="owner">
+                    <div className="flex flex-col">
+                      <span className="font-medium">Owner</span>
+                      <span className="text-xs text-muted-foreground">Full access to all settings and clients</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="manager">
+                    <div className="flex flex-col">
+                      <span className="font-medium">Manager</span>
+                      <span className="text-xs text-muted-foreground">Manages assigned clients and their tasks</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="team_member">
+                    <div className="flex flex-col">
+                      <span className="font-medium">Team Member</span>
+                      <span className="text-xs text-muted-foreground">Sees only tasks assigned to them</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {/* Role */}
-          <div className="space-y-1.5">
-            <Label>Role</Label>
-            <Select value={role} onValueChange={setRole}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="owner">
-                  <div className="flex flex-col">
-                    <span className="font-medium">Owner</span>
-                    <span className="text-xs text-muted-foreground">Full access to all settings and clients</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="manager">
-                  <div className="flex flex-col">
-                    <span className="font-medium">Manager</span>
-                    <span className="text-xs text-muted-foreground">Manages assigned clients and their tasks</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="team_member">
-                  <div className="flex flex-col">
-                    <span className="font-medium">Team Member</span>
-                    <span className="text-xs text-muted-foreground">Sees only tasks assigned to them</span>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex justify-end">
+            <Button onClick={handleSaveProfile} disabled={savingProfile} size="sm">
+              {savingProfile && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Save Profile
+            </Button>
+          </div>
+
+          <Separator />
+
+          {/* ── Password reset section ── */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-semibold">Reset Password</span>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="newPassword">New Password</Label>
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Min. 6 characters"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Input
+                id="confirmPassword"
+                type={showPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repeat password"
+                onKeyDown={(e) => e.key === "Enter" && handleSetPassword()}
+              />
+            </div>
+
+            <Button
+              onClick={handleSetPassword}
+              disabled={savingPassword || !newPassword || !confirmPassword}
+              variant="outline"
+              size="sm"
+              className="w-full gap-2"
+            >
+              {savingPassword
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Setting password...</>
+                : <><KeyRound className="w-4 h-4" /> Set Password</>
+              }
+            </Button>
           </div>
         </div>
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Save Changes
-          </Button>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
