@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { differenceInDays } from "date-fns";
 import { InviteMemberModal } from "@/components/team/InviteMemberModal";
 import { EditProfileModal } from "@/components/team/EditProfileModal";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -22,7 +23,7 @@ export default function TeamPage() {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .order('full_name');
+        .order('created_at', { ascending: false }); // newest first
 
       if (error) throw error;
 
@@ -32,13 +33,15 @@ export default function TeamPage() {
         .select('assigned_to, status');
 
       return (data || []).map((profile: any) => {
-        const myTasks = (tasks || []).filter(t => t.assigned_to === profile.id);
-        const completed = myTasks.filter(t => t.status === 'completed').length;
+        const myTasks = (tasks || []).filter((t: any) => t.assigned_to === profile.id);
+        const completed = myTasks.filter((t: any) => t.status === 'completed').length;
         const assigned = myTasks.length;
         const utilRate = assigned > 0 ? (assigned / 30) * 100 : 0;
+        const isNew = differenceInDays(new Date(), new Date(profile.created_at)) <= 7;
 
         return {
           ...profile,
+          isNew,
           metrics: {
             assigned,
             completed,
@@ -105,12 +108,14 @@ export default function TeamPage() {
                 <TableHead>Role</TableHead>
                 <TableHead>Tasks (MTD)</TableHead>
                 <TableHead className="w-[200px]">Utilization</TableHead>
+                <TableHead>Added</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((member: any) => (
                 <TableRow key={member.id}>
+                  {/* Member name + email + "New" badge */}
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar className="h-9 w-9">
@@ -120,30 +125,47 @@ export default function TeamPage() {
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex flex-col">
-                        <span className="font-medium text-sm">{member.full_name || 'Unnamed User'}</span>
-                        <span className="text-xs text-muted-foreground capitalize">{member.role?.replace('_', ' ')}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">{member.full_name || 'Unnamed User'}</span>
+                          {member.isNew && (
+                            <Badge className="text-[10px] h-4 px-1.5 bg-green-100 text-green-700 border-green-200">
+                              New
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground capitalize">
+                          {member.role?.replace('_', ' ')}
+                        </span>
                       </div>
                     </div>
                   </TableCell>
+
                   <TableCell>
                     <Badge variant="outline" className={`text-xs uppercase tracking-wider ${getRoleBadgeClass(member.role)}`}>
                       {member.role?.replace('_', ' ') || 'Team Member'}
                     </Badge>
                   </TableCell>
+
                   <TableCell>
                     <div className="flex flex-col">
                       <span className="font-medium text-sm">{member.metrics.completed} / {member.metrics.assigned}</span>
                       <span className="text-xs text-muted-foreground">{member.metrics.completionRate}% completion</span>
                     </div>
                   </TableCell>
+
                   <TableCell>
                     <div className="space-y-2">
-                       <div className="flex items-center justify-between text-xs">
-                         <span className="font-medium">{member.metrics.utilization}%</span>
-                       </div>
-                       <Progress value={Math.min(member.metrics.utilization, 100)} className={`h-2 ${getUtilColor(member.metrics.utilization)}`} />
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium">{member.metrics.utilization}%</span>
+                      </div>
+                      <Progress value={Math.min(member.metrics.utilization, 100)} className={`h-2 ${getUtilColor(member.metrics.utilization)}`} />
                     </div>
                   </TableCell>
+
+                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                    {new Date(member.created_at).toLocaleDateString()}
+                  </TableCell>
+
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -158,7 +180,7 @@ export default function TeamPage() {
                           className="gap-2 cursor-pointer"
                           onClick={() => setEditingMember(member)}
                         >
-                          <Edit2 className="w-4 h-4" /> Edit Profile
+                          <Edit2 className="w-4 h-4" /> Edit Profile / Password
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -167,7 +189,7 @@ export default function TeamPage() {
               ))}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                     {searchQuery ? "No members match your search." : "No team members found."}
                   </TableCell>
                 </TableRow>

@@ -1,151 +1,164 @@
 import { useState } from "react";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Mail } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Plus, Eye, EyeOff, UserPlus } from "lucide-react";
 import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-const inviteSchema = z.object({
-  email: z.string().email("Invalid email"),
-  role: z.enum(["owner", "manager", "team_member"]),
-  manager_id: z.string().optional(),
-});
-
-type InviteFormValues = z.infer<typeof inviteSchema>;
-
 export function InviteMemberModal() {
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const form = useForm<InviteFormValues>({
-    resolver: zodResolver(inviteSchema),
-    defaultValues: {
-      email: "",
-      role: "team_member",
-      manager_id: undefined,
-    },
-  });
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("team_member");
 
-  const { data: managers } = useQuery({
-    queryKey: ['managers-dropdown'],
-    queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('id, full_name').in('role', ['owner', 'manager']);
-      if (error) throw error;
-      return data;
-    }
-  });
+  const reset = () => {
+    setFullName("");
+    setEmail("");
+    setPassword("");
+    setRole("team_member");
+    setShowPassword(false);
+  };
 
-  async function onSubmit(data: InviteFormValues) {
+  const handleClose = (v: boolean) => {
+    if (!v) reset();
+    setOpen(v);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fullName.trim()) { toast.error("Full name is required"); return; }
+    if (!email.trim()) { toast.error("Email is required"); return; }
+    if (password.length < 6) { toast.error("Password must be at least 6 characters"); return; }
+
     setLoading(true);
     try {
-      // In a real app this hits a Supabase Edge Function configured with the Resend SDK.
-      // E.g., await supabase.functions.invoke('invite-user', { body: data })
-      
-      // We will simulate the payload success for the frontend logic requirement:
-      console.log("Simulating Resend Trigger:", data);
-      
-      // Wait to simulate network latency
-      await new Promise(res => setTimeout(res, 1000));
-      
-      toast.success(`Invite sent to ${data.email} via Resend!`);
+      const { data, error } = await supabase.functions.invoke("create-user", {
+        body: { email: email.trim(), password, full_name: fullName.trim(), role },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success(`${fullName} added successfully — they can now log in with their credentials.`);
       setOpen(false);
-      form.reset();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to send invite");
+      reset();
+      // Refresh team lists
+      queryClient.invalidateQueries({ queryKey: ["team-members"] });
+      queryClient.invalidateQueries({ queryKey: ["settings-team"] });
+      queryClient.invalidateQueries({ queryKey: ["profiles-list"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to create user");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogTrigger asChild>
         <Button className="gap-2">
-          <Plus className="h-4 w-4" /> Invite Member
+          <Plus className="h-4 w-4" /> Add Team Member
         </Button>
       </DialogTrigger>
+
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Invite Team Member</DialogTitle>
-          <DialogDescription>Send an email invite formatted with a magic signup link.</DialogDescription>
+          <DialogTitle className="flex items-center gap-2">
+            <UserPlus className="w-4 h-4" />
+            Add Team Member
+          </DialogTitle>
+          <DialogDescription>
+            Create a login for a new team member. They can sign in immediately with the credentials you set here — no email confirmation required.
+          </DialogDescription>
         </DialogHeader>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-4">
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email Address *</FormLabel>
-                  <FormControl>
-                    <Input placeholder="member@agency.com" type="email" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+          {/* Full Name */}
+          <div className="space-y-1.5">
+            <Label htmlFor="fullName">Full Name *</Label>
+            <Input
+              id="fullName"
+              placeholder="Jane Smith"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              disabled={loading}
             />
+          </div>
 
-            <FormField
-              control={form.control}
-              name="role"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Assign Role *</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="team_member">Team Member</SelectItem>
-                      <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="owner">Owner</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
+          {/* Email */}
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email Address *</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="jane@youragency.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={loading}
             />
+          </div>
 
-            {form.watch("role") === "team_member" && (
-              <FormField
-                control={form.control}
-                name="manager_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Assign Manager</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {managers?.map(m => (
-                          <SelectItem key={m.id} value={m.id}>{m.full_name || 'Unnamed'}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
+          {/* Password */}
+          <div className="space-y-1.5">
+            <Label htmlFor="password">Password *</Label>
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                placeholder="Min. 6 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="pr-10"
+                disabled={loading}
               />
-            )}
-
-            <div className="flex justify-end gap-3 border-t pt-4">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={loading} className="gap-2">
-                <Mail className="w-4 h-4" />
-                {loading ? "Sending..." : "Send Invite"}
-              </Button>
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
-          </form>
-        </Form>
+            <p className="text-xs text-muted-foreground">
+              Share these credentials with the team member directly.
+            </p>
+          </div>
+
+          {/* Role */}
+          <div className="space-y-1.5">
+            <Label>Role *</Label>
+            <Select value={role} onValueChange={setRole} disabled={loading}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="team_member">Team Member</SelectItem>
+                <SelectItem value="manager">Manager</SelectItem>
+                <SelectItem value="owner">Owner</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2 border-t">
+            <Button type="button" variant="outline" onClick={() => handleClose(false)} disabled={loading}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading} className="gap-2">
+              <UserPlus className="w-4 h-4" />
+              {loading ? "Creating…" : "Create & Add"}
+            </Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
