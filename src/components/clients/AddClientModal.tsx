@@ -72,39 +72,21 @@ export function AddClientModal({ children }: AddClientModalProps) {
 
   async function onSubmit(data: AddClientFormValues) {
     try {
-      // 1. Insert the client using only natively existing columns
-      const { data: client, error: clientError } = await supabase
-        .from('clients')
-        .insert({
-          name: data.name,
-          website_url: data.website_url || null,
-          status: data.status,
-        })
-        .select('id')
-        .single();
+      // Use SECURITY DEFINER RPC — handles auth check, insert, services,
+      // and auto-assignment for managers in one atomic call.
+      const { data: result, error } = await supabase.rpc("create_client", {
+        p_name: data.name,
+        p_website_url: data.website_url || null,
+        p_status: data.status,
+        p_service_ids: data.active_services,
+      });
 
-      if (clientError) throw clientError;
-
-      // 2. Insert active services if any
-      if (data.active_services.length > 0 && client) {
-        const servicesToInsert = data.active_services.map(serviceId => ({
-          client_id: client.id,
-          service_id: serviceId,
-          is_active: true
-        }));
-
-        const { error: servicesError } = await supabase
-          .from('client_services')
-          .insert(servicesToInsert);
-
-        if (servicesError) throw servicesError;
-      }
+      if (error) throw error;
+      if ((result as any)?.error) throw new Error((result as any).error);
 
       toast.success("Client added successfully");
       form.reset();
       setOpen(false);
-      
-      // Invalidate queries so the list page updates
       queryClient.invalidateQueries({ queryKey: ['clients-list'] });
     } catch (error: any) {
       toast.error(error.message || "Failed to add client");
