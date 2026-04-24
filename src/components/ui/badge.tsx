@@ -8,10 +8,10 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: "border-indigo-500/20 bg-indigo-500/15 text-indigo-400",
-        secondary: "border-white/10 bg-white/5 text-foreground/70",
-        destructive: "border-red-500/20 bg-red-500/10 text-red-400",
-        outline: "text-foreground border-white/15",
+        default:     "border-orange-500/20 bg-orange-500/10 text-orange-500",
+        secondary:   "border-border bg-secondary text-secondary-foreground",
+        destructive: "border-red-500/20 bg-red-500/10 text-red-500",
+        outline:     "text-foreground border-border",
       },
     },
     defaultVariants: {

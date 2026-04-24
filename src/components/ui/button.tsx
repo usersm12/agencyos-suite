@@ -9,18 +9,18 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 hover:brightness-110 border-0",
-        destructive: "bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20",
-        outline: "border border-white/10 bg-white/[0.02] text-foreground hover:bg-white/[0.05] hover:border-white/20",
-        secondary: "bg-white/[0.04] text-foreground border border-white/[0.08] hover:bg-white/[0.07]",
-        ghost: "hover:bg-white/[0.05] text-foreground/70 hover:text-foreground",
-        link: "text-indigo-400 underline-offset-4 hover:underline hover:text-indigo-300",
+        default:     "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg shadow-orange-500/20 hover:shadow-orange-500/30 hover:brightness-110 border-0",
+        destructive: "bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20",
+        outline:     "border border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground",
+        secondary:   "bg-secondary text-secondary-foreground border border-border hover:bg-secondary/80",
+        ghost:       "hover:bg-accent text-foreground/70 hover:text-foreground",
+        link:        "text-primary underline-offset-4 hover:underline hover:text-primary/80",
       },
       size: {
         default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-11 rounded-md px-8",
-        icon: "h-10 w-10",
+        sm:      "h-9 px-3",
+        lg:      "h-11 px-8",
+        icon:    "h-10 w-10",
       },
     },
     defaultVariants: {

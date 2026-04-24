@@ -31,3 +31,4 @@ import-data.mjs
 *.njsproj
 *.sln
 *.sw?
+.vercel

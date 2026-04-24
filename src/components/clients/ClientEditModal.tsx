@@ -113,26 +113,26 @@ export function ClientEditModal({ clientId, clientData, children }: ClientEditMo
 
   async function onSubmit(data: EditClientFormValues) {
     try {
-      const { error } = await supabase
-        .from('clients')
-        .update({
-          name: data.name,
-          email: data.email || null,
-          phone: data.phone || null,
-          company: data.company || null,
-          website_url: data.website_url || null,
-          industry: data.industry || null,
-          contract_type: data.contract_type || null,
-          contract_start_date: data.contract_start_date || null,
-          monthly_retainer_value: data.monthly_retainer_value ? Number(data.monthly_retainer_value) : null,
-          currency: data.currency || 'USD',
-          manager_id: data.manager_id || null,
-          status: data.status,
-          notes: data.notes || null,
-        })
-        .eq('id', clientId);
+      // Use SECURITY DEFINER RPC to bypass PostgREST plan-cache RLS issues
+      const { data: result, error } = await supabase.rpc("update_client", {
+        p_client_id:               clientId,
+        p_name:                    data.name,
+        p_email:                   data.email || null,
+        p_phone:                   data.phone || null,
+        p_company:                 data.company || null,
+        p_website_url:             data.website_url || null,
+        p_industry:                data.industry || null,
+        p_contract_type:           data.contract_type || null,
+        p_contract_start_date:     data.contract_start_date || null,
+        p_monthly_retainer_value:  data.monthly_retainer_value ? Number(data.monthly_retainer_value) : null,
+        p_currency:                data.currency || 'USD',
+        p_manager_id:              (data.manager_id && data.manager_id !== 'none') ? data.manager_id : null,
+        p_status:                  data.status,
+        p_notes:                   data.notes || null,
+      });
 
       if (error) throw error;
+      if ((result as any)?.error) throw new Error((result as any).error);
 
       toast.success("Client updated successfully");
       setOpen(false);

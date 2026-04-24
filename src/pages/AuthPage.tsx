@@ -43,34 +43,34 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0a0a0f] p-4 relative overflow-hidden">
-      {/* Gradient mesh background */}
+      {/* Orange glow blobs */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-indigo-600/10 rounded-full blur-[120px]" />
-        <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-purple-600/10 rounded-full blur-[120px]" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-indigo-500/5 rounded-full blur-[80px]" />
+        <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-orange-600/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-orange-500/8 rounded-full blur-[120px]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-orange-400/5 rounded-full blur-[80px]" />
       </div>
 
-      {/* Subtle grid pattern */}
+      {/* Subtle grid */}
       <div
         className="absolute inset-0 pointer-events-none opacity-[0.02]"
         style={{
-          backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
-          backgroundSize: '40px 40px',
+          backgroundImage: `linear-gradient(rgba(255,255,255,0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.15) 1px, transparent 1px)`,
+          backgroundSize: "40px 40px",
         }}
       />
 
       <div className="relative w-full max-w-md">
-        {/* Glow behind card */}
-        <div className="absolute inset-0 -m-4 bg-indigo-500/5 rounded-3xl blur-2xl pointer-events-none" />
+        {/* Card glow */}
+        <div className="absolute inset-0 -m-4 bg-orange-500/5 rounded-3xl blur-2xl pointer-events-none" />
 
         <Card className="relative border-white/[0.06] bg-[#111118]/90 backdrop-blur-xl shadow-[0_24px_80px_rgba(0,0,0,0.6)]">
           <CardHeader className="text-center pb-6 pt-8">
             <div className="flex items-center justify-center mb-4">
-              <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/30">
+              <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg shadow-orange-500/30">
                 <Sparkles className="h-6 w-6 text-white" />
               </div>
             </div>
-            <CardTitle className="text-3xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+            <CardTitle className="text-3xl font-bold tracking-tight bg-gradient-to-r from-orange-400 to-orange-500 bg-clip-text text-transparent">
               AgencyOS
             </CardTitle>
             <CardDescription className="text-white/40 mt-2">
@@ -82,37 +82,16 @@ export default function AuthPage() {
               {isSignUp && (
                 <div className="space-y-2">
                   <Label htmlFor="fullName" className="text-white/70 text-sm font-medium">Full Name</Label>
-                  <Input
-                    id="fullName"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="John Doe"
-                    required
-                  />
+                  <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="John Doe" required />
                 </div>
               )}
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-white/70 text-sm font-medium">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@agency.com"
-                  required
-                />
+                <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@agency.com" required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password" className="text-white/70 text-sm font-medium">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                />
+                <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required minLength={6} />
               </div>
               <Button type="submit" className="w-full mt-2" disabled={loading}>
                 {loading ? "Loading..." : isSignUp ? "Sign Up" : "Sign In"}
