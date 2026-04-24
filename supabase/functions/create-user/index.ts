@@ -65,25 +65,18 @@ Deno.serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Create auth user — email_confirm: true skips the confirmation email
+    // Create auth user — email_confirm: true skips the confirmation email.
+    // Pass role in user_metadata so the SECURITY DEFINER handle_new_user trigger
+    // sets it directly during profile creation — avoids any RLS UPDATE check.
     const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
       email,
       password,
-      email_confirm: true,           // no confirmation email sent
-      user_metadata: { full_name },  // trigger picks this up for profile.full_name
+      email_confirm: true,
+      user_metadata: { full_name, role: assignedRole },
     });
 
     if (createError) {
       return json({ error: createError.message }, 400);
-    }
-
-    // The on_auth_user_created trigger creates the profile automatically.
-    // Now update role (it defaults to team_member from the schema).
-    if (assignedRole !== "team_member") {
-      await adminClient
-        .from("profiles")
-        .update({ role: assignedRole })
-        .eq("user_id", newUser.user.id);
     }
 
     return json({ success: true, user_id: newUser.user.id });
