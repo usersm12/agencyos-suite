@@ -151,6 +151,28 @@ export function TasksList({ tasks, onTaskClick, selectedIds = [], onSelectIds }:
     },
   });
 
+  // Subtask counts for all visible tasks (single batch query)
+  const taskIds = tasks.map((t) => t.id);
+  const { data: subtaskCounts = {} } = useQuery({
+    queryKey: ["subtask-counts", taskIds.join(",")],
+    queryFn: async () => {
+      if (taskIds.length === 0) return {};
+      const { data } = await supabase
+        .from("subtasks")
+        .select("parent_task_id, status")
+        .in("parent_task_id", taskIds);
+      const counts: Record<string, { total: number; open: number }> = {};
+      (data || []).forEach((s: any) => {
+        if (!counts[s.parent_task_id])
+          counts[s.parent_task_id] = { total: 0, open: 0 };
+        counts[s.parent_task_id].total++;
+        if (s.status !== "completed") counts[s.parent_task_id].open++;
+      });
+      return counts;
+    },
+    enabled: taskIds.length > 0,
+  });
+
   const patchTask = async (taskId: string, patch: Record<string, any>) => {
     const { error } = await supabase.from("tasks").update(patch).eq("id", taskId);
     if (error) { toast.error(error.message); return; }
@@ -249,7 +271,21 @@ export function TasksList({ tasks, onTaskClick, selectedIds = [], onSelectIds }:
                             }}
                           />
                         ) : (
-                          <span onDoubleClick={(e) => stopAndEdit(e, task.id, "title")} title="Double-click to edit">{task.title}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span onDoubleClick={(e) => stopAndEdit(e, task.id, "title")} title="Double-click to edit">{task.title}</span>
+                            {(subtaskCounts as any)[task.id] && (
+                              <span
+                                className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                                  (subtaskCounts as any)[task.id].open > 0
+                                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                                    : "bg-green-50 text-green-700 border-green-200"
+                                }`}
+                                title={`${(subtaskCounts as any)[task.id].open} open, ${(subtaskCounts as any)[task.id].total} total subtasks`}
+                              >
+                                {(subtaskCounts as any)[task.id].total} subtask{(subtaskCounts as any)[task.id].total !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </TableCell>
 

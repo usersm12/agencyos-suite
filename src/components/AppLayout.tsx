@@ -8,6 +8,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useBackgroundEngine } from "@/hooks/useBackgroundEngine";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { QuickLogButton } from "@/components/QuickLogButton";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -123,7 +124,10 @@ export default function AppLayout() {
                 <Menu className="h-5 w-5" />
               </SidebarTrigger>
             </div>
-            <GlobalSearch />
+            <div className="flex items-center gap-2">
+              <GlobalSearch />
+              <NotificationBell />
+            </div>
           </header>
           <main className="flex-1 p-6 overflow-auto">
             <ErrorBoundary>

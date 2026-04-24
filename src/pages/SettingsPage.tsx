@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,16 @@ import { EditProfileModal } from "@/components/team/EditProfileModal";
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("services");
   const [editingMember, setEditingMember] = useState<any | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Support ?tab=sops deep-link (e.g. from SOPGuide "Add SOP" button)
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab) {
+      setActiveTab(tab);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const { data: teamMembers, isLoading: isLoadingTeam } = useQuery({
     queryKey: ['settings-team'],

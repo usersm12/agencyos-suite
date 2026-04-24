@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const addTaskSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -29,9 +30,28 @@ const addTaskSchema = z.object({
 
 type AddTaskFormValues = z.infer<typeof addTaskSchema>;
 
+// Auto-subtask templates per service type
+function getAutoSubtasks(serviceType: string): string[] {
+  const lower = serviceType.toLowerCase();
+  if (lower.includes("seo")) {
+    return ["Research phase", "Execution phase", "Review and log"];
+  }
+  if (lower.includes("web")) {
+    return [
+      "Client brief received",
+      "Design approved",
+      "Development complete",
+      "Testing done",
+      "Client sign-off",
+    ];
+  }
+  return [];
+}
+
 export function AddTaskModal() {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
 
   const form = useForm<AddTaskFormValues>({
     resolver: zodResolver(addTaskSchema),
@@ -132,7 +152,7 @@ export function AddTaskModal() {
         }
       }
 
-      const { error } = await supabase
+      const { data: newTask, error } = await supabase
         .from('tasks')
         .insert({
           title: data.title,
@@ -142,13 +162,33 @@ export function AddTaskModal() {
           due_date: data.due_date ? format(data.due_date, 'yyyy-MM-dd') : null,
           priority: data.priority,
           description: data.description || null,
-        });
+        })
+        .select('id')
+        .single();
 
       if (error) throw error;
+
+      // Auto-create subtasks for SEO and Web Development tasks
+      if (newTask && data.service_type) {
+        const autoSubtasks = getAutoSubtasks(data.service_type);
+        if (autoSubtasks.length > 0) {
+          await supabase.from('subtasks').insert(
+            autoSubtasks.map((title) => ({
+              parent_task_id: newTask.id,
+              title,
+              status: 'not_started',
+              priority: 'medium',
+              created_by: profile?.id || null,
+            }))
+          );
+        }
+      }
+
       toast.success("Task created successfully");
       setOpen(false);
       form.reset();
       queryClient.invalidateQueries({ queryKey: ['tasks-list'] });
+      queryClient.invalidateQueries({ queryKey: ['subtask-counts'] });
     } catch (error: any) {
       toast.error(error.message || "Failed to create task");
     }

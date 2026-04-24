@@ -1,3 +1,4 @@
+import { useState, useCallback } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import { TaskChecklist } from "./TaskChecklist";
 import { SOPGuide } from "./SOPGuide";
 import { TaskAttachments } from "./TaskAttachments";
 import { TimeTracker } from "./TimeTracker";
+import { SubtasksSection } from "./SubtasksSection";
 import { WebProjectTab } from "@/components/webproject/WebProjectTab";
 
 interface TaskDetailPanelProps {
@@ -24,34 +26,49 @@ interface TaskDetailPanelProps {
 
 export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
   const queryClient = useQueryClient();
+  const [openSubtasksCount, setOpenSubtasksCount] = useState(0);
+
+  const handleSubtaskCount = useCallback((count: number) => {
+    setOpenSubtasksCount(count);
+  }, []);
 
   const { data: task, isLoading } = useQuery({
-    queryKey: ['task', taskId],
+    queryKey: ["task", taskId],
     queryFn: async () => {
       if (!taskId) return null;
       const { data, error } = await supabase
-        .from('tasks')
+        .from("tasks")
         .select(`
           *,
           projects (name, client_id, clients (name)),
           profiles!tasks_assigned_to_fkey (full_name)
         `)
-        .eq('id', taskId)
+        .eq("id", taskId)
         .single();
       if (error) throw error;
       return data;
     },
-    enabled: !!taskId
+    enabled: !!taskId,
   });
 
   const handleStatusChange = async (newStatus: string) => {
     if (!taskId) return;
+    // Block completion if there are open subtasks
+    if (newStatus === "completed" && openSubtasksCount > 0) {
+      toast.warning(
+        `${openSubtasksCount} subtask${openSubtasksCount > 1 ? "s" : ""} still open. Complete them first or mark them not applicable.`
+      );
+      return;
+    }
     try {
-      const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
+      const { error } = await supabase
+        .from("tasks")
+        .update({ status: newStatus })
+        .eq("id", taskId);
       if (error) throw error;
       toast.success("Status updated");
-      queryClient.invalidateQueries({ queryKey: ['tasks-list'] });
-      queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+      queryClient.invalidateQueries({ queryKey: ["tasks-list"] });
+      queryClient.invalidateQueries({ queryKey: ["task", taskId] });
     } catch (err: any) {
       toast.error(err.message || "Failed to update status");
     }
@@ -66,27 +83,37 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
       <SheetContent className="w-full sm:max-w-2xl overflow-y-auto outline-none">
         {isLoading ? (
           <div className="space-y-4 animate-pulse mt-6">
-            <div className="h-8 bg-muted rounded w-3/4"></div>
-            <div className="h-4 bg-muted rounded w-1/4"></div>
-            <div className="h-64 bg-muted rounded w-full mt-8"></div>
+            <div className="h-8 bg-muted rounded w-3/4" />
+            <div className="h-4 bg-muted rounded w-1/4" />
+            <div className="h-64 bg-muted rounded w-full mt-8" />
           </div>
         ) : task ? (
           <>
+            {/* ── Task Header ── */}
             <SheetHeader className="mb-6">
-              <div className="flex items-start justify-between">
-                <div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      {(task.projects as any)?.clients?.name || 'No Client'}
+                      {(task.projects as any)?.clients?.name || "No Client"}
                     </span>
                     <span className="text-xs text-muted-foreground">&bull;</span>
-                    <span className="text-xs text-muted-foreground">{(task.projects as any)?.name || 'No Project'}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {(task.projects as any)?.name || "No Project"}
+                    </span>
                   </div>
                   <SheetTitle className="text-2xl leading-tight">{task.title}</SheetTitle>
                 </div>
+                {/* SOP button — always visible in top-right of header */}
+                {task.service_type && (
+                  <div className="shrink-0 mt-1">
+                    <SOPGuide serviceType={task.service_type} />
+                  </div>
+                )}
               </div>
             </SheetHeader>
 
+            {/* ── Metadata strip ── */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6 bg-muted/30 p-4 rounded-lg border">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Status</p>
@@ -99,20 +126,39 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                     <SelectItem value="not_started">Not Started</SelectItem>
                     <SelectItem value="in_progress">In Progress</SelectItem>
                     <SelectItem value="blocked">Blocked</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="completed">
+                      {openSubtasksCount > 0
+                        ? `Complete (${openSubtasksCount} subtasks open)`
+                        : "Completed"}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
+                {openSubtasksCount > 0 && (
+                  <p className="text-[10px] text-amber-600 mt-1">
+                    ⚠ {openSubtasksCount} open subtask{openSubtasksCount > 1 ? "s" : ""}
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Priority</p>
-                <Badge variant={task.priority === 'high' ? 'destructive' : task.priority === 'medium' ? 'secondary' : 'outline'}>
-                  {task.priority?.toUpperCase() || 'MEDIUM'}
+                <Badge
+                  variant={
+                    task.priority === "high"
+                      ? "destructive"
+                      : task.priority === "medium"
+                      ? "secondary"
+                      : "outline"
+                  }
+                >
+                  {task.priority?.toUpperCase() || "MEDIUM"}
                 </Badge>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Due Date</p>
                 <div className="flex items-center text-sm font-medium">
-                  {task.due_date ? format(new Date(task.due_date), 'MMM d, yyyy') : '-'}
+                  {task.due_date
+                    ? format(new Date(task.due_date), "MMM d, yyyy")
+                    : "-"}
                 </div>
               </div>
               <div>
@@ -125,14 +171,18 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                           {(task.profiles as any).full_name.substring(0, 2).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
-                      <span className="text-sm font-medium truncate max-w-[80px]">{(task.profiles as any).full_name}</span>
+                      <span className="text-sm font-medium truncate max-w-[80px]">
+                        {(task.profiles as any).full_name}
+                      </span>
                     </>
-                  ) : <span className="text-sm italic">Unassigned</span>}
+                  ) : (
+                    <span className="text-sm italic">Unassigned</span>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Tab layout — Web tasks get an extra "Web Project" tab */}
+            {/* ── Content — Web tasks get a tab bar, others are linear ── */}
             {task.service_type?.toLowerCase().includes("web") ? (
               <Tabs defaultValue="web" className="w-full">
                 <TabsList className="mb-4 w-full">
@@ -155,12 +205,8 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                     </div>
                   </div>
                   <Separator />
-                  {task.service_type && (
-                    <>
-                      <SOPGuide serviceType={task.service_type} />
-                      <Separator />
-                    </>
-                  )}
+                  <SubtasksSection taskId={task.id} onOpenCountChange={handleSubtaskCount} />
+                  <Separator />
                   <TaskChecklist taskId={task.id} serviceType={task.service_type} />
                   <Separator />
                   <TimeTracker taskId={task.id} clientId={clientId} />
@@ -194,13 +240,10 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
 
                 <Separator />
 
-                {/* SOP Guide */}
-                {task.service_type && (
-                  <>
-                    <SOPGuide serviceType={task.service_type} />
-                    <Separator />
-                  </>
-                )}
+                {/* Subtasks */}
+                <SubtasksSection taskId={task.id} onOpenCountChange={handleSubtaskCount} />
+
+                <Separator />
 
                 {/* Checklist */}
                 <TaskChecklist taskId={task.id} serviceType={task.service_type} />

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AddTaskModal } from "@/components/tasks/AddTaskModal";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,16 @@ export default function TasksPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Open task panel when navigated from a notification
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (openId) {
+      setSelectedTaskId(openId);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: ['tasks-list'],
