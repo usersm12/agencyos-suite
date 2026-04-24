@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, CheckSquare, UserCog, Flag, BarChart3, Settings, LogOut, Menu } from "lucide-react";
+import { LayoutDashboard, Users, CheckSquare, UserCog, Flag, BarChart3, Settings, LogOut, Menu, Sparkles } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -26,7 +26,7 @@ function AppSidebarContent() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { profile, signOut } = useAuth();
-  
+
   const { data: openFlagsCount } = useQuery({
     queryKey: ['open-flags-count'],
     queryFn: async () => {
@@ -42,17 +42,20 @@ function AppSidebarContent() {
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
-      <SidebarContent className="bg-sidebar text-sidebar-foreground">
+      <SidebarContent className="bg-[#0d0d14] text-sidebar-foreground border-r border-white/[0.04]">
         <div className="p-4 flex items-center gap-2">
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/20 shrink-0">
+            <Sparkles className="h-4 w-4 text-white" />
+          </div>
           {!collapsed && (
-            <h1 className="text-lg font-bold tracking-tight text-sidebar-foreground">
+            <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
               AgencyOS
             </h1>
           )}
         </div>
 
         <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-muted text-xs uppercase tracking-wider">
+          <SidebarGroupLabel className="text-white/30 text-xs uppercase tracking-wider px-3">
             Navigation
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -62,15 +65,15 @@ function AppSidebarContent() {
                   <SidebarMenuButton asChild>
                     <NavLink
                       to={item.url}
-                      className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                      activeClassName="bg-sidebar-accent text-sidebar-foreground font-medium"
+                      className="text-white/50 hover:bg-white/[0.04] hover:text-foreground transition-all duration-150 rounded-lg mx-1"
+                      activeClassName="bg-gradient-to-r from-indigo-500/20 to-purple-500/10 text-indigo-400 border-l-2 border-indigo-500 font-medium rounded-lg mx-1"
                     >
-                      <item.icon className="h-4 w-4" />
+                      <item.icon className="h-[18px] w-[18px] shrink-0" />
                       {!collapsed && (
                         <span className="flex items-center justify-between w-full">
                           {item.title}
                           {item.title === "Flags" && openFlagsCount && openFlagsCount > 0 ? (
-                            <span className="bg-destructive text-destructive-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                            <span className="bg-red-500/20 text-red-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                               {openFlagsCount}
                             </span>
                           ) : null}
@@ -86,20 +89,29 @@ function AppSidebarContent() {
 
         <div className="mt-auto p-4">
           {!collapsed && profile && (
-            <div className="mb-3 px-2">
-              <p className="text-sm font-medium text-sidebar-foreground truncate">
-                {profile.full_name}
-              </p>
-              <p className="text-xs text-sidebar-muted capitalize">
-                {profile.role.replace("_", " ")}
-              </p>
+            <div className="mb-3 px-2 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 p-[2px] shrink-0">
+                <div className="w-full h-full rounded-full bg-[#0d0d14] flex items-center justify-center">
+                  <span className="text-xs font-semibold text-indigo-300">
+                    {profile.full_name?.charAt(0)?.toUpperCase() ?? "U"}
+                  </span>
+                </div>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-white/90 truncate">
+                  {profile.full_name}
+                </p>
+                <span className="text-[10px] text-white/40 capitalize bg-white/5 px-1.5 py-0.5 rounded-full border border-white/[0.06]">
+                  {profile.role.replace("_", " ")}
+                </span>
+              </div>
             </div>
           )}
           <Button
             variant="ghost"
             size={collapsed ? "icon" : "default"}
             onClick={signOut}
-            className="w-full text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+            className="w-full text-white/40 hover:text-white/70 hover:bg-white/[0.04]"
           >
             <LogOut className="h-4 w-4" />
             {!collapsed && <span className="ml-2">Sign Out</span>}
@@ -112,26 +124,30 @@ function AppSidebarContent() {
 
 export default function AppLayout() {
   useBackgroundEngine();
-  
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <AppSidebarContent />
         <div className="flex-1 flex flex-col">
-          <header className="h-14 flex items-center justify-between border-b bg-card px-4 shrink-0">
+          <header className="h-14 flex items-center justify-between border-b border-white/[0.04] bg-[#0d0d14]/80 backdrop-blur-xl px-4 shrink-0">
             <div className="flex items-center">
-              <SidebarTrigger className="mr-4">
+              <SidebarTrigger className="mr-4 text-white/50 hover:text-white/80 hover:bg-white/[0.04] rounded-lg transition-colors">
                 <Menu className="h-5 w-5" />
               </SidebarTrigger>
             </div>
             <div className="flex items-center gap-2">
-              <GlobalSearch />
+              <div className="border border-white/[0.06] bg-white/[0.02] rounded-lg backdrop-blur-sm">
+                <GlobalSearch />
+              </div>
               <NotificationBell />
             </div>
           </header>
-          <main className="flex-1 p-6 overflow-auto">
+          <main className="flex-1 p-6 overflow-auto bg-[#0a0a0f]">
             <ErrorBoundary>
-              <Outlet />
+              <div className="animate-fade-in">
+                <Outlet />
+              </div>
             </ErrorBoundary>
           </main>
         </div>
