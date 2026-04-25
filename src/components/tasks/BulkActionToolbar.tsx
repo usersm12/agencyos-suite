@@ -93,7 +93,7 @@ export function BulkActionToolbar({ selectedIds, tasks, onClearSelection }: Bulk
     
     const rows = selectedTasks.map(t => [
       escapeCsv(t.title),
-      escapeCsv(t.projects?.clients?.name),
+      escapeCsv(t.clients?.name),
       escapeCsv(t.service_type || 'N/A'),
       escapeCsv(t.profiles?.full_name),
       escapeCsv(t.due_date ? format(new Date(t.due_date), 'yyyy-MM-dd') : ''),

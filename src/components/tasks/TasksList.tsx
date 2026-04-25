@@ -292,8 +292,7 @@ export function TasksList({ tasks, onTaskClick, selectedIds = [], onSelectIds }:
                       {/* Client */}
                       <TableCell>
                         <div className="flex flex-col">
-                          <span className="font-medium text-sm">{task.projects?.clients?.name || "No Client"}</span>
-                          <span className="text-xs text-muted-foreground">{task.projects?.name || "No Project"}</span>
+                          <span className="font-medium text-sm">{task.clients?.name || "No Client"}</span>
                         </div>
                       </TableCell>
 
@@ -415,7 +414,7 @@ export function TasksList({ tasks, onTaskClick, selectedIds = [], onSelectIds }:
 
                       {/* Time badge + quick timer */}
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <TaskRowTimer taskId={task.id} clientId={(task.projects as any)?.client_id || null} />
+                        <TaskRowTimer taskId={task.id} clientId={task.client_id || null} />
                       </TableCell>
 
                       {/* Actions */}

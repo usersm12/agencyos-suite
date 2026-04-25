@@ -20,7 +20,7 @@ async function autoGenerateFlags() {
   // 1. Check overdue tasks
   const { data: overdueTasks } = await supabase
     .from('tasks')
-    .select('id, title, due_date, project_id, projects(client_id, clients(name))')
+    .select('id, title, due_date, client_id')
     .lt('due_date', todayStr)
     .neq('status', 'completed');
 
@@ -28,7 +28,7 @@ async function autoGenerateFlags() {
     for (const task of overdueTasks) {
       const dueDate = new Date(task.due_date!);
       const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-      const clientId = (task.projects as any)?.client_id;
+      const clientId = task.client_id;
       if (!clientId) continue;
 
       const priority = daysOverdue >= 3 ? 'high' : 'medium';
@@ -60,18 +60,10 @@ async function autoGenerateFlags() {
   const { data: clients } = await supabase.from('clients').select('id, name').eq('status', 'active');
   if (clients) {
     for (const client of clients) {
-      const { data: projects } = await supabase
-        .from('projects')
-        .select('id')
-        .eq('client_id', client.id);
-      
-      if (!projects || projects.length === 0) continue;
-      const projectIds = projects.map(p => p.id);
-
       const { count } = await supabase
         .from('tasks')
         .select('*', { count: 'exact', head: true })
-        .in('project_id', projectIds)
+        .eq('client_id', client.id)
         .eq('status', 'completed')
         .gte('updated_at', monthStart);
 

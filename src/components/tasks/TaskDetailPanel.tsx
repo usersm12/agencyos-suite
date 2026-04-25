@@ -40,7 +40,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
         .from("tasks")
         .select(`
           *,
-          projects (name, client_id, clients (name)),
+          clients (name),
           profiles!tasks_assigned_to_fkey (full_name)
         `)
         .eq("id", taskId)
@@ -76,7 +76,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
 
   if (!taskId) return null;
 
-  const clientId = (task?.projects as any)?.client_id || null;
+  const clientId = task?.client_id || null;
 
   return (
     <Sheet open={!!taskId} onOpenChange={(open) => !open && onClose()}>
@@ -95,11 +95,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      {(task.projects as any)?.clients?.name || "No Client"}
-                    </span>
-                    <span className="text-xs text-muted-foreground">&bull;</span>
-                    <span className="text-xs text-muted-foreground">
-                      {(task.projects as any)?.name || "No Project"}
+                      {(task.clients as any)?.name || "No Client"}
                     </span>
                   </div>
                   <SheetTitle className="text-2xl leading-tight">{task.title}</SheetTitle>

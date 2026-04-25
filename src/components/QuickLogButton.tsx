@@ -52,16 +52,6 @@ export function QuickLogButton() {
     enabled: open,
   });
 
-  const { data: projects = [] } = useQuery({
-    queryKey: ["quick-log-projects", clientId],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_projects_for_client", { p_client_id: clientId });
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!clientId && logType === "task",
-    refetchOnMount: 'always',
-  });
 
   const reset = () => {
     setStep(1);
@@ -115,7 +105,7 @@ export function QuickLogButton() {
         const { error } = await supabase.from("tasks").insert({
           title: fields.title,
           description: fields.description || null,
-          project_id: fields.project_id || null,
+          client_id: clientId,
           priority: fields.priority || "medium",
           status: "not_started",
           due_date: fields.due_date || null,
@@ -321,26 +311,6 @@ export function QuickLogButton() {
                     <label className="text-xs font-medium text-muted-foreground">Due Date</label>
                     <Input type="date" className="mt-1" value={fields.due_date || ""} onChange={(e) => setFields({ ...fields, due_date: e.target.value })} />
                   </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Project
-                    {projects.length === 0 && clientId && (
-                      <span className="ml-1 font-normal text-muted-foreground/60">(none yet — task saved without project)</span>
-                    )}
-                  </label>
-                  <Select
-                    value={fields.project_id || ""}
-                    onValueChange={(v) => setFields({ ...fields, project_id: v })}
-                    disabled={projects.length === 0}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder={projects.length === 0 ? "No projects for this client" : "Select project (optional)"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">Description</label>

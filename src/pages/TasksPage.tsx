@@ -37,7 +37,7 @@ export default function TasksPage() {
         .from('tasks')
         .select(`
           *,
-          projects (name, client_id, clients (name)),
+          clients (name),
           profiles!tasks_assigned_to_fkey (full_name)
         `)
         .order('created_at', { ascending: false });
@@ -48,8 +48,8 @@ export default function TasksPage() {
   });
 
   const filteredTasks = tasks?.filter(t => 
-    t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    (t.projects as any)?.clients?.name?.toLowerCase().includes(searchQuery.toLowerCase())
+    t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (t.clients as any)?.name?.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
   return (
