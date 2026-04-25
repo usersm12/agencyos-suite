@@ -7,6 +7,7 @@ import { ArrowLeft, Building2, MoreVertical, Pencil, Trash2 } from "lucide-react
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -33,6 +34,8 @@ export default function ClientProfilePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
+  const isTeamMember = profile?.role === "team_member";
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -88,31 +91,33 @@ export default function ClientProfilePage() {
             <h2 className="text-3xl font-bold tracking-tight">Client Profile</h2>
           </div>
 
-          {/* Settings dropdown — Edit + Delete */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <MoreVertical className="h-4 w-4" />
-                Settings
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <ClientEditModal clientId={id!} clientData={client}>
-                <DropdownMenuItem className="gap-2 cursor-pointer" onSelect={(e) => e.preventDefault()}>
-                  <Pencil className="h-4 w-4" />
-                  Edit Client
+          {/* Settings dropdown — Edit + Delete (owners + managers only) */}
+          {!isTeamMember && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <MoreVertical className="h-4 w-4" />
+                  Settings
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <ClientEditModal clientId={id!} clientData={client}>
+                  <DropdownMenuItem className="gap-2 cursor-pointer" onSelect={(e) => e.preventDefault()}>
+                    <Pencil className="h-4 w-4" />
+                    Edit Client
+                  </DropdownMenuItem>
+                </ClientEditModal>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive focus:bg-destructive/10 gap-2 cursor-pointer"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete Client
                 </DropdownMenuItem>
-              </ClientEditModal>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive focus:bg-destructive/10 gap-2 cursor-pointer"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete Client
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">
@@ -201,7 +206,8 @@ export default function ClientProfilePage() {
               </TabsContent>
 
               <TabsContent value="integrations" className="space-y-6">
-                <ClientCredentials clientId={id!} />
+                {/* Sensitive credentials (CMS, API keys) — owners + managers only */}
+                {!isTeamMember && <ClientCredentials clientId={id!} />}
                 <GoogleSearchConsole clientId={id!} />
                 <GoogleAnalytics clientId={id!} />
               </TabsContent>
