@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -47,8 +46,6 @@ const statusBadge: Record<string, string> = {
 };
 
 export function ProjectsSection({ clientId }: Props) {
-  const { profile } = useAuth();
-  const isOwner = profile?.role === "owner";
   const queryClient = useQueryClient();
 
   const [editProject, setEditProject] = useState<any | null>(null);
@@ -219,18 +216,16 @@ export function ProjectsSection({ clientId }: Props) {
                 <Settings2 className="h-3.5 w-3.5" />
               </Button>
 
-              {/* Delete button — owners only */}
-              {isOwner && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                  title="Delete project"
-                  onClick={() => setDeleteProjectId(p.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              )}
+              {/* Delete button — server enforces owner-only via delete_project RPC */}
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                title="Delete project (owners only)"
+                onClick={() => setDeleteProjectId(p.id)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
             </div>
           ))}
         </div>
