@@ -55,10 +55,12 @@ export function QuickLogButton() {
   const { data: projects = [] } = useQuery({
     queryKey: ["quick-log-projects", clientId],
     queryFn: async () => {
-      const { data } = await supabase.from("projects").select("id, name").eq("client_id", clientId).order("name");
+      const { data, error } = await supabase.rpc("get_projects_for_client", { p_client_id: clientId });
+      if (error) throw error;
       return data || [];
     },
     enabled: !!clientId && logType === "task",
+    refetchOnMount: 'always',
   });
 
   const reset = () => {
@@ -292,6 +294,15 @@ export function QuickLogButton() {
 
             {step === 3 && logType === "task" && (
               <div className="space-y-3">
+                {/* Show selected client context */}
+                {clientId && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/10">
+                    <span className="text-xs text-muted-foreground">Client:</span>
+                    <span className="text-xs font-medium text-foreground">
+                      {clients.find((c) => c.id === clientId)?.name ?? clientId}
+                    </span>
+                  </div>
+                )}
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">Task Title *</label>
                   <Input placeholder="e.g. Write blog post" className="mt-1" value={fields.title || ""} onChange={(e) => setFields({ ...fields, title: e.target.value })} />
@@ -312,9 +323,20 @@ export function QuickLogButton() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Project</label>
-                  <Select value={fields.project_id || ""} onValueChange={(v) => setFields({ ...fields, project_id: v })}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select project (optional)" /></SelectTrigger>
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Project
+                    {projects.length === 0 && clientId && (
+                      <span className="ml-1 font-normal text-muted-foreground/60">(none yet — task saved without project)</span>
+                    )}
+                  </label>
+                  <Select
+                    value={fields.project_id || ""}
+                    onValueChange={(v) => setFields({ ...fields, project_id: v })}
+                    disabled={projects.length === 0}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder={projects.length === 0 ? "No projects for this client" : "Select project (optional)"} />
+                    </SelectTrigger>
                     <SelectContent>
                       {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                     </SelectContent>

@@ -20,7 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const addTaskSchema = z.object({
   title: z.string().min(2, "Title is required"),
-  project_id: z.string().min(1, "Project is required"),
+  project_id: z.string().optional(),
   service_type: z.string().optional(),
   assigned_to: z.string().optional(),
   due_date: z.date().optional(),
@@ -50,6 +50,7 @@ function getAutoSubtasks(serviceType: string): string[] {
 
 export function AddTaskModal() {
   const [open, setOpen] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
   const queryClient = useQueryClient();
   const { profile } = useAuth();
 
@@ -65,51 +66,45 @@ export function AddTaskModal() {
     },
   });
 
-  const { data: projects } = useQuery({
-    queryKey: ['projects-dropdown'],
+  // Clients list
+  const { data: clients = [] } = useQuery({
+    queryKey: ["task-modal-clients"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('projects')
-        .select('id, name, client_id, clients(name)')
-        .eq('status', 'active')
-        .order('name');
-      if (error) throw error;
-      return data || [];
-    }
-  });
-
-  const { data: clients } = useQuery({
-    queryKey: ['clients-dropdown'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('clients')
-        .select('id, name')
-        .order('name');
+        .from("clients")
+        .select("id, name")
+        .order("name");
       if (error) throw error;
       return data || [];
     },
-    enabled: projects !== undefined && projects.length === 0
+    enabled: open,
+    refetchOnMount: "always",
   });
 
-  const displayOptions = projects && projects.length > 0 
-    ? projects.map(p => ({
-        id: p.id,
-        name: `${p.name} ${p.clients?.name ? `(${p.clients.name})` : ''}`,
-        type: 'project'
-      })) 
-    : clients?.map(c => ({
-        id: c.id,
-        name: c.name,
-        type: 'client'
-      })) || [];
+  // Projects filtered by selected client
+  const { data: projects = [], isFetching: projectsFetching } = useQuery({
+    queryKey: ["task-modal-projects", selectedClientId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_projects_for_client", {
+        p_client_id: selectedClientId,
+      });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: open && !!selectedClientId,
+    refetchOnMount: "always",
+  });
 
   const { data: team } = useQuery({
-    queryKey: ['team-dropdown'],
+    queryKey: ["team-dropdown"],
     queryFn: async () => {
-      const { data, error } = await supabase.from('profiles').select('id, full_name');
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name");
       if (error) throw error;
       return data;
-    }
+    },
+    enabled: open,
   });
 
   const SERVICES_LIST = [
@@ -117,53 +112,75 @@ export function AddTaskModal() {
     "Google Ads",
     "Meta Ads",
     "Social Media",
-    "Web Development"
+    "Web Development",
   ];
 
-  async function onSubmit(data: AddTaskFormValues) {
-    try {
-      let finalProjectId = data.project_id;
+  function handleClientChange(clientId: string) {
+    setSelectedClientId(clientId);
+    // Reset project when client changes
+    form.setValue("project_id", "");
+  }
 
-      // If we are using clients as the fallback selector, map it to a Project under the hood
-      if (projects !== undefined && projects.length === 0) {
-        let { data: existingProject } = await supabase
-          .from('projects')
-          .select('id')
-          .eq('client_id', data.project_id)
+  function handleOpenChange(v: boolean) {
+    setOpen(v);
+    if (!v) {
+      form.reset();
+      setSelectedClientId("");
+    }
+  }
+
+  async function onSubmit(data: AddTaskFormValues) {
+    if (!data.project_id && !selectedClientId) {
+      toast.error("Please select a client and project");
+      return;
+    }
+
+    try {
+      let finalProjectId = data.project_id || null;
+
+      // If client selected but no project, create a default project for that client
+      if (selectedClientId && !finalProjectId) {
+        const clientName =
+          clients.find((c) => c.id === selectedClientId)?.name || "Client";
+        // Check for existing default project first
+        const { data: existing } = await supabase
+          .from("projects")
+          .select("id")
+          .eq("client_id", selectedClientId)
+          .order("created_at", { ascending: true })
           .limit(1)
           .maybeSingle();
 
-        if (!existingProject) {
-          const clientName = clients?.find(c => c.id === data.project_id)?.name || 'Client';
-          const { data: newProject, error: projError } = await supabase
-            .from('projects')
-            .insert({
-              client_id: data.project_id,
-              name: `${clientName} Default Project`,
-              status: 'active'
-            })
-            .select('id')
-            .single();
-
-          if (projError) throw projError;
-          finalProjectId = newProject.id;
+        if (existing) {
+          finalProjectId = existing.id;
         } else {
-          finalProjectId = existingProject.id;
+          const { data: newProj, error: projErr } = await supabase
+            .from("projects")
+            .insert({
+              client_id: selectedClientId,
+              name: `${clientName} — Default`,
+              status: "active",
+            })
+            .select("id")
+            .single();
+          if (projErr) throw projErr;
+          finalProjectId = newProj.id;
+          queryClient.invalidateQueries({ queryKey: ["task-modal-projects", selectedClientId] });
         }
       }
 
       const { data: newTask, error } = await supabase
-        .from('tasks')
+        .from("tasks")
         .insert({
           title: data.title,
           project_id: finalProjectId,
           service_type: data.service_type || null,
           assigned_to: data.assigned_to || null,
-          due_date: data.due_date ? format(data.due_date, 'yyyy-MM-dd') : null,
+          due_date: data.due_date ? format(data.due_date, "yyyy-MM-dd") : null,
           priority: data.priority,
           description: data.description || null,
         })
-        .select('id')
+        .select("id")
         .single();
 
       if (error) throw error;
@@ -172,12 +189,12 @@ export function AddTaskModal() {
       if (newTask && data.service_type) {
         const autoSubtasks = getAutoSubtasks(data.service_type);
         if (autoSubtasks.length > 0) {
-          await supabase.from('subtasks').insert(
+          await supabase.from("subtasks").insert(
             autoSubtasks.map((title) => ({
               parent_task_id: newTask.id,
               title,
-              status: 'not_started',
-              priority: 'medium',
+              status: "not_started",
+              priority: "medium",
               created_by: profile?.id || null,
             }))
           );
@@ -185,17 +202,16 @@ export function AddTaskModal() {
       }
 
       toast.success("Task created successfully");
-      setOpen(false);
-      form.reset();
-      queryClient.invalidateQueries({ queryKey: ['tasks-list'] });
-      queryClient.invalidateQueries({ queryKey: ['subtask-counts'] });
+      handleOpenChange(false);
+      queryClient.invalidateQueries({ queryKey: ["tasks-list"] });
+      queryClient.invalidateQueries({ queryKey: ["subtask-counts"] });
     } catch (error: any) {
       toast.error(error.message || "Failed to create task");
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button className="gap-2">
           <Plus className="h-4 w-4" /> New Task
@@ -204,11 +220,16 @@ export function AddTaskModal() {
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Task</DialogTitle>
-          <DialogDescription>Add a new task, assign it to a team member, and set a deadline.</DialogDescription>
+          <DialogDescription>
+            Add a new task, assign it to a team member, and set a deadline.
+          </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-4">
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-6 pt-4"
+          >
             <FormField
               control={form.control}
               name="title"
@@ -216,29 +237,77 @@ export function AddTaskModal() {
                 <FormItem>
                   <FormLabel>Task Title *</FormLabel>
                   <FormControl>
-                    <Input placeholder="E.g., Complete Monthly SEO Audit" {...field} />
+                    <Input
+                      placeholder="E.g., Complete Monthly SEO Audit"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            
+
+            {/* Client + Project row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Client selector */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Client *</label>
+                <Select
+                  value={selectedClientId}
+                  onValueChange={handleClientChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a client" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Project selector — filtered by client */}
               <FormField
                 control={form.control}
                 name="project_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Project *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormLabel>
+                      Project{" "}
+                      {projects.length === 0 && selectedClientId && !projectsFetching && (
+                        <span className="text-muted-foreground font-normal text-xs ml-1">
+                          (none — will auto-create)
+                        </span>
+                      )}
+                    </FormLabel>
+                    <Select
+                      value={field.value || ""}
+                      onValueChange={field.onChange}
+                      disabled={!selectedClientId}
+                    >
                       <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select a project" /></SelectTrigger>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={
+                              !selectedClientId
+                                ? "Select a client first"
+                                : projectsFetching
+                                ? "Loading…"
+                                : projects.length === 0
+                                ? "No projects yet"
+                                : "Select a project"
+                            }
+                          />
+                        </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {displayOptions.map(option => (
-                           <SelectItem key={option.id} value={option.id}>
-                             {option.name}
-                           </SelectItem>
+                        {projects.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -246,20 +315,29 @@ export function AddTaskModal() {
                   </FormItem>
                 )}
               />
+            </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="service_type"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Service Type</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a service" />
+                        </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {SERVICES_LIST.map(service => (
-                          <SelectItem key={service} value={service}>{service}</SelectItem>
+                        {SERVICES_LIST.map((service) => (
+                          <SelectItem key={service} value={service}>
+                            {service}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -274,12 +352,21 @@ export function AddTaskModal() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Assign To</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Unassigned" />
+                        </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {team?.map(t => <SelectItem key={t.id} value={t.id}>{t.full_name || 'Unnamed'}</SelectItem>)}
+                        {team?.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.full_name || "Unnamed"}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -296,14 +383,32 @@ export function AddTaskModal() {
                     <Popover>
                       <PopoverTrigger asChild>
                         <FormControl>
-                          <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                            {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                          <Button
+                            variant={"outline"}
+                            className={cn(
+                              "w-full pl-3 text-left font-normal",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value ? (
+                              format(field.value, "PPP")
+                            ) : (
+                              <span>Pick a date</span>
+                            )}
                             <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))} initialFocus />
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={field.onChange}
+                          disabled={(date) =>
+                            date < new Date(new Date().setHours(0, 0, 0, 0))
+                          }
+                          initialFocus
+                        />
                       </PopoverContent>
                     </Popover>
                     <FormMessage />
@@ -317,9 +422,14 @@ export function AddTaskModal() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Priority</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select priority" /></SelectTrigger>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select priority" />
+                        </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="low">Low</SelectItem>
@@ -340,7 +450,11 @@ export function AddTaskModal() {
                 <FormItem>
                   <FormLabel>Description / Notes</FormLabel>
                   <FormControl>
-                    <Textarea className="min-h-[100px]" placeholder="Add context or instructions..." {...field} />
+                    <Textarea
+                      className="min-h-[100px]"
+                      placeholder="Add context or instructions..."
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -348,8 +462,16 @@ export function AddTaskModal() {
             />
 
             <div className="flex justify-end gap-3 border-t pt-4">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="submit">Create Task</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!selectedClientId}>
+                Create Task
+              </Button>
             </div>
           </form>
         </Form>

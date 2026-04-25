@@ -19,6 +19,7 @@ import { SocialPostLog } from "@/components/clients/SocialPostLog";
 import { ClientDocuments } from "@/components/clients/ClientDocuments";
 import { ClientTimeReport } from "@/components/clients/ClientTimeReport";
 import { WebProjectMiniCard } from "@/components/webproject/WebProjectMiniCard";
+import { ProjectsSection } from "@/components/clients/ProjectsSection";
 
 export default function ClientProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -119,6 +120,7 @@ export default function ClientProfilePage() {
             <Tabs defaultValue="overview" className="w-full">
               <TabsList className="mb-4 flex-wrap h-auto gap-1">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="projects">Projects</TabsTrigger>
                 <TabsTrigger value="goals">Performance vs Goals</TabsTrigger>
                 <TabsTrigger value="backlinks">Backlinks</TabsTrigger>
                 <TabsTrigger value="social">Social Posts</TabsTrigger>
@@ -142,6 +144,10 @@ export default function ClientProfilePage() {
                 )}
               </TabsContent>
               
+              <TabsContent value="projects" className="space-y-4">
+                <ProjectsSection clientId={id!} />
+              </TabsContent>
+
               <TabsContent value="goals" className="space-y-4">
                 <GoalsPerformance clientId={id!} />
               </TabsContent>
