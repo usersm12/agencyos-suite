@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { differenceInDays } from "date-fns";
 import { InviteMemberModal } from "@/components/team/InviteMemberModal";
 import { EditProfileModal } from "@/components/team/EditProfileModal";
+import { useAuth } from "@/contexts/AuthContext";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export default function TeamPage() {
+  const { profile: myProfile } = useAuth();
+  const isManager = myProfile?.role === "manager";
   const [editingMember, setEditingMember] = useState<any | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -176,12 +179,19 @@ export default function TeamPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Manage User</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="gap-2 cursor-pointer"
-                          onClick={() => setEditingMember(member)}
-                        >
-                          <Edit2 className="w-4 h-4" /> Edit Profile / Password
-                        </DropdownMenuItem>
+                        {/* Managers can only edit team_members; owners can edit anyone */}
+                        {(!isManager || member.role === "team_member") ? (
+                          <DropdownMenuItem
+                            className="gap-2 cursor-pointer"
+                            onClick={() => setEditingMember(member)}
+                          >
+                            <Edit2 className="w-4 h-4" /> Edit Profile / Password
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem disabled className="gap-2 text-muted-foreground/50">
+                            <Edit2 className="w-4 h-4" /> No edit access
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 import { Loader2, User, KeyRound, Eye, EyeOff } from "lucide-react";
 
 interface EditProfileModalProps {
@@ -24,6 +25,8 @@ interface EditProfileModalProps {
 }
 
 export function EditProfileModal({ member, open, onClose }: EditProfileModalProps) {
+  const { profile: myProfile } = useAuth();
+  const isCallerManager = myProfile?.role === "manager";
   const queryClient = useQueryClient();
 
   // Profile fields
@@ -134,34 +137,43 @@ export function EditProfileModal({ member, open, onClose }: EditProfileModalProp
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Role</Label>
-              <Select value={role} onValueChange={setRole}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="owner">
-                    <div className="flex flex-col">
-                      <span className="font-medium">Owner</span>
-                      <span className="text-xs text-muted-foreground">Full access to all settings and clients</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="manager">
-                    <div className="flex flex-col">
-                      <span className="font-medium">Manager</span>
-                      <span className="text-xs text-muted-foreground">Manages assigned clients and their tasks</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="team_member">
-                    <div className="flex flex-col">
-                      <span className="font-medium">Team Member</span>
-                      <span className="text-xs text-muted-foreground">Sees only tasks assigned to them</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {isCallerManager ? (
+              /* Managers cannot change roles */
+              <div className="space-y-1.5">
+                <Label>Role</Label>
+                <div className="flex items-center h-10 px-3 rounded-[10px] border border-border bg-muted/40 text-sm text-muted-foreground capitalize">
+                  {member.role.replace("_", " ")}
+                </div>
+                <p className="text-xs text-muted-foreground">Only owners can change roles.</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label>Role</Label>
+                <Select value={role} onValueChange={setRole}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="owner">
+                      <div className="flex flex-col">
+                        <span className="font-medium">Owner</span>
+                        <span className="text-xs text-muted-foreground">Full access to all settings and clients</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="manager">
+                      <div className="flex flex-col">
+                        <span className="font-medium">Manager</span>
+                        <span className="text-xs text-muted-foreground">Manages assigned clients and their tasks</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="team_member">
+                      <div className="flex flex-col">
+                        <span className="font-medium">Team Member</span>
+                        <span className="text-xs text-muted-foreground">Sees only tasks assigned to them</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end">

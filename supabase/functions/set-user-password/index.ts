@@ -6,24 +6,23 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
-
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405, headers: corsHeaders });
   }
 
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!authHeader) return json({ error: "Unauthorized" }, 401);
 
-    // Verify the caller is an owner using their own token (respects RLS)
     const callerClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
@@ -31,11 +30,7 @@ Deno.serve(async (req) => {
     );
 
     const { data: { user: callerUser } } = await callerClient.auth.getUser();
-    if (!callerUser) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!callerUser) return json({ error: "Unauthorized" }, 401);
 
     const { data: callerProfile } = await callerClient
       .from("profiles")
@@ -43,28 +38,35 @@ Deno.serve(async (req) => {
       .eq("user_id", callerUser.id)
       .single();
 
-    if (callerProfile?.role !== "owner") {
-      return new Response(JSON.stringify({ error: "Forbidden: only owners can reset passwords" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const callerRole = callerProfile?.role;
+
+    // Only owners and managers can reset passwords
+    if (callerRole !== "owner" && callerRole !== "manager") {
+      return json({ error: "Forbidden: only owners and managers can reset passwords" }, 403);
     }
 
-    // Parse body
     const { target_user_id, new_password } = await req.json();
 
     if (!target_user_id || !new_password) {
-      return new Response(JSON.stringify({ error: "Missing target_user_id or new_password" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ error: "Missing target_user_id or new_password" }, 400);
     }
-
     if (new_password.length < 6) {
-      return new Response(JSON.stringify({ error: "Password must be at least 6 characters" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ error: "Password must be at least 6 characters" }, 400);
     }
 
-    // Use service role to set the password — bypasses auth RLS
+    // Managers can only reset passwords for team_members — not managers or owners
+    if (callerRole === "manager") {
+      const { data: targetProfile } = await callerClient
+        .from("profiles")
+        .select("role")
+        .eq("user_id", target_user_id)
+        .single();
+
+      if (targetProfile?.role !== "team_member") {
+        return json({ error: "Managers can only reset passwords for team members" }, 403);
+      }
+    }
+
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -75,18 +77,10 @@ Deno.serve(async (req) => {
       password: new_password,
     });
 
-    if (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (error) return json({ error: error.message }, 500);
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ success: true });
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message ?? "Unexpected error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: err.message ?? "Unexpected error" }, 500);
   }
 });
