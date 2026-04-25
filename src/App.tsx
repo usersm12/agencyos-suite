@@ -15,6 +15,7 @@ import AppLayout from "./components/AppLayout";
 import DashboardPage from "./pages/DashboardPage";
 import ClientsPage from "./pages/ClientsPage";
 import ClientProfilePage from "./pages/ClientProfilePage";
+import PropertyPage from "./pages/PropertyPage";
 import TasksPage from "./pages/TasksPage";
 import TeamPage from "./pages/TeamPage";
 import FlagsPage from "./pages/FlagsPage";
@@ -77,6 +78,7 @@ const App = () => (
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/clients" element={<ClientsPage />} />
               <Route path="/clients/:id" element={<ClientProfilePage />} />
+              <Route path="/clients/:id/properties/:propertyId" element={<PropertyPage />} />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/team" element={<TeamPage />} />
               <Route path="/flags" element={<FlagsPage />} />

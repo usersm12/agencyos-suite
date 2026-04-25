@@ -24,6 +24,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface GoogleSearchConsoleProps {
   clientId: string;
+  propertyId?: string;
 }
 
 type Status = "loading" | "no_property" | "disconnected" | "expired" | "connected";
@@ -32,7 +33,7 @@ interface Credentials {
   gsc_property_url: string | null;
 }
 
-export function GoogleSearchConsole({ clientId }: GoogleSearchConsoleProps) {
+export function GoogleSearchConsole({ clientId, propertyId }: GoogleSearchConsoleProps) {
   const [status, setStatus] = useState<Status>("loading");
   const [data, setData] = useState<GSCData | null>(null);
   const [dateRef, setDateRef] = useState<string | null>(null);
@@ -46,15 +47,16 @@ export function GoogleSearchConsole({ clientId }: GoogleSearchConsoleProps) {
     setStatus("loading");
     setError(null);
 
+    const credsQuery = supabase
+      .from("client_credentials")
+      .select("gsc_property_url");
     const [creds, integration, cached] = await Promise.all([
-      supabase
-        .from("client_credentials")
-        .select("gsc_property_url")
-        .eq("client_id", clientId)
-        .maybeSingle()
-        .then(({ data }) => data as Credentials | null),
-      getGSCIntegration(clientId),
-      loadCachedGSCMetrics(clientId),
+      (propertyId
+        ? credsQuery.eq("property_id", propertyId)
+        : credsQuery.eq("client_id", clientId)
+      ).maybeSingle().then(({ data }) => data as Credentials | null),
+      getGSCIntegration(clientId, propertyId),
+      loadCachedGSCMetrics(clientId, propertyId),
     ]);
 
     setCredentials(creds);
@@ -95,7 +97,7 @@ export function GoogleSearchConsole({ clientId }: GoogleSearchConsoleProps) {
     setIsFetching(true);
     setError(null);
     try {
-      const fresh = await refreshGSCData(clientId, accessToken, siteUrl);
+      const fresh = await refreshGSCData(clientId, accessToken, siteUrl, propertyId);
       setData(fresh);
       setDateRef(new Date().toISOString().slice(0, 10));
       toast.success("Search Console data updated");
@@ -109,7 +111,7 @@ export function GoogleSearchConsole({ clientId }: GoogleSearchConsoleProps) {
   };
 
   const handleRefresh = async () => {
-    const integration = await getGSCIntegration(clientId);
+    const integration = await getGSCIntegration(clientId, propertyId);
     if (!integration || isTokenExpired(integration.expires_at)) {
       setStatus("expired");
       toast.error("Session expired — please reconnect");
@@ -128,14 +130,16 @@ export function GoogleSearchConsole({ clientId }: GoogleSearchConsoleProps) {
     }
 
     // Save site URL to credentials table before OAuth
+    const credsPayload: Record<string, string> = { client_id: clientId, gsc_property_url: siteUrl };
+    if (propertyId) credsPayload.property_id = propertyId;
     await supabase.from("client_credentials").upsert(
-      { client_id: clientId, gsc_property_url: siteUrl },
-      { onConflict: "client_id" }
+      credsPayload,
+      { onConflict: propertyId ? "property_id" : "client_id" }
     );
     setCredentials(prev => ({ ...prev, gsc_property_url: siteUrl }));
 
     try {
-      const accessToken = await connectSearchConsole(clientId);
+      const accessToken = await connectSearchConsole(clientId, propertyId);
       toast.success("Connected to Google Search Console");
       setStatus("connected");
       await doRefresh(accessToken, siteUrl);
@@ -148,7 +152,7 @@ export function GoogleSearchConsole({ clientId }: GoogleSearchConsoleProps) {
 
   // ── Disconnect ───────────────────────────────────────────────────────────
   const handleDisconnect = async () => {
-    await disconnectSearchConsole(clientId);
+    await disconnectSearchConsole(clientId, propertyId);
     setStatus("disconnected");
     setData(null);
     setDateRef(null);

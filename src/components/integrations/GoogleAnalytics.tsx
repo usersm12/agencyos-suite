@@ -27,13 +27,14 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface GoogleAnalyticsProps {
   clientId: string;
+  propertyId?: string;
 }
 
 type Status = "loading" | "no_property" | "disconnected" | "expired" | "connected";
 
 const PIE_COLORS = ["#4285F4", "#34A853", "#FBBC05", "#EA4335", "#8884d8"];
 
-export function GoogleAnalytics({ clientId }: GoogleAnalyticsProps) {
+export function GoogleAnalytics({ clientId, propertyId }: GoogleAnalyticsProps) {
   const [status, setStatus] = useState<Status>("loading");
   const [data, setData] = useState<GA4Data | null>(null);
   const [dateRef, setDateRef] = useState<string | null>(null);
@@ -47,15 +48,14 @@ export function GoogleAnalytics({ clientId }: GoogleAnalyticsProps) {
     setStatus("loading");
     setError(null);
 
+    const credsQuery = supabase.from("client_credentials").select("ga4_property_id");
     const [creds, integration, cached] = await Promise.all([
-      supabase
-        .from("client_credentials")
-        .select("ga4_property_id")
-        .eq("client_id", clientId)
-        .maybeSingle()
-        .then(({ data }) => data as { ga4_property_id: string | null } | null),
-      getGA4Integration(clientId),
-      loadCachedGA4Metrics(clientId),
+      (propertyId
+        ? credsQuery.eq("property_id", propertyId)
+        : credsQuery.eq("client_id", clientId)
+      ).maybeSingle().then(({ data }) => data as { ga4_property_id: string | null } | null),
+      getGA4Integration(clientId, propertyId),
+      loadCachedGA4Metrics(clientId, propertyId),
     ]);
 
     const propId = creds?.ga4_property_id ?? null;
@@ -92,11 +92,11 @@ export function GoogleAnalytics({ clientId }: GoogleAnalyticsProps) {
   useEffect(() => { loadState(); }, [loadState]);
 
   // ── Refresh ─────────────────────────────────────────────────────────────
-  const doRefresh = async (accessToken: string, propertyId: string) => {
+  const doRefresh = async (accessToken: string, ga4PropId: string) => {
     setIsFetching(true);
     setError(null);
     try {
-      const fresh = await refreshGA4Data(clientId, accessToken, propertyId);
+      const fresh = await refreshGA4Data(clientId, accessToken, ga4PropId, propertyId);
       setData(fresh);
       setDateRef(new Date().toISOString().slice(0, 10));
       toast.success("GA4 data updated");
@@ -110,7 +110,7 @@ export function GoogleAnalytics({ clientId }: GoogleAnalyticsProps) {
   };
 
   const handleRefresh = async () => {
-    const integration = await getGA4Integration(clientId);
+    const integration = await getGA4Integration(clientId, propertyId);
     if (!integration || isTokenExpired(integration.expires_at)) {
       setStatus("expired");
       toast.error("Session expired — please reconnect");
@@ -129,14 +129,16 @@ export function GoogleAnalytics({ clientId }: GoogleAnalyticsProps) {
     }
 
     // Save property ID to credentials table before OAuth
+    const credsPayload: Record<string, string> = { client_id: clientId, ga4_property_id: propId };
+    if (propertyId) credsPayload.property_id = propertyId;
     await supabase.from("client_credentials").upsert(
-      { client_id: clientId, ga4_property_id: propId },
-      { onConflict: "client_id" }
+      credsPayload,
+      { onConflict: propertyId ? "property_id" : "client_id" }
     );
     setGa4PropertyId(propId);
 
     try {
-      const accessToken = await connectGA4(clientId);
+      const accessToken = await connectGA4(clientId, propertyId);
       toast.success("Connected to Google Analytics 4");
       setStatus("connected");
       await doRefresh(accessToken, propId);
@@ -149,7 +151,7 @@ export function GoogleAnalytics({ clientId }: GoogleAnalyticsProps) {
 
   // ── Disconnect ───────────────────────────────────────────────────────────
   const handleDisconnect = async () => {
-    await disconnectGA4(clientId);
+    await disconnectGA4(clientId, propertyId);
     setStatus("disconnected");
     setData(null);
     setDateRef(null);

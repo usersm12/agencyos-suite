@@ -96,8 +96,23 @@ function loadGIS(): Promise<void> {
   return gisLoading;
 }
 
+// ── Property resolver ──────────────────────────────────────────────────────
+// All upserts now use property_id (the client_id unique constraint was dropped).
+// When propertyId is not passed, we look up the primary property for the client.
+async function resolvePropertyId(clientId: string, propertyId?: string): Promise<string> {
+  if (propertyId) return propertyId;
+  const { data } = await supabase
+    .from('properties')
+    .select('id')
+    .eq('client_id', clientId)
+    .eq('is_primary', true)
+    .maybeSingle();
+  if (!data?.id) throw new Error('No primary property found for client');
+  return data.id;
+}
+
 // ── OAuth ─────────────────────────────────────────────────────────────────
-export async function connectSearchConsole(clientId: string): Promise<string> {
+export async function connectSearchConsole(clientId: string, propertyId?: string): Promise<string> {
   const clientIdEnv = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   if (!clientIdEnv) throw new Error('VITE_GOOGLE_CLIENT_ID is not set in .env');
 
@@ -117,15 +132,23 @@ export async function connectSearchConsole(clientId: string): Promise<string> {
           Date.now() + (response.expires_in ?? 3600) * 1000
         ).toISOString();
 
+        let resolvedPropertyId: string;
+        try {
+          resolvedPropertyId = await resolvePropertyId(clientId, propertyId);
+        } catch (e) {
+          reject(e); return;
+        }
+
         const { error } = await supabase.from('client_integrations').upsert(
           {
             client_id: clientId,
+            property_id: resolvedPropertyId,
             provider: 'google_search_console',
             access_token: response.access_token,
             expires_at: expiresAt,
             connected_at: new Date().toISOString(),
           },
-          { onConflict: 'client_id,provider' }
+          { onConflict: 'property_id,provider' }
         );
 
         if (error) { reject(error); return; }
@@ -138,21 +161,26 @@ export async function connectSearchConsole(clientId: string): Promise<string> {
   });
 }
 
-export async function disconnectSearchConsole(clientId: string): Promise<void> {
-  await supabase
+export async function disconnectSearchConsole(clientId: string, propertyId?: string): Promise<void> {
+  const query = supabase
     .from('client_integrations')
     .delete()
-    .eq('client_id', clientId)
     .eq('provider', 'google_search_console');
+  if (propertyId) {
+    await query.eq('property_id', propertyId);
+  } else {
+    await query.eq('client_id', clientId);
+  }
 }
 
-export async function getGSCIntegration(clientId: string): Promise<GSCIntegration | null> {
-  const { data, error } = await supabase
+export async function getGSCIntegration(clientId: string, propertyId?: string): Promise<GSCIntegration | null> {
+  const query = supabase
     .from('client_integrations')
     .select('access_token, expires_at, connected_at')
-    .eq('client_id', clientId)
-    .eq('provider', 'google_search_console')
-    .maybeSingle();
+    .eq('provider', 'google_search_console');
+  const { data, error } = propertyId
+    ? await query.eq('property_id', propertyId).maybeSingle()
+    : await query.eq('client_id', clientId).maybeSingle();
 
   if (error || !data?.access_token) return null;
   return data as GSCIntegration;
@@ -259,7 +287,8 @@ export async function fetchSearchConsoleData(
 export async function refreshGSCData(
   clientId: string,
   accessToken: string,
-  siteUrl: string
+  siteUrl: string,
+  propertyId?: string,
 ): Promise<GSCData> {
   const now = new Date();
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
@@ -280,37 +309,42 @@ export async function refreshGSCData(
     fetchedAt: now.toISOString(),
   };
 
-  await saveGSCMetrics(clientId, gscData);
+  await saveGSCMetrics(clientId, gscData, propertyId);
   return gscData;
 }
 
 // ── DB helpers ─────────────────────────────────────────────────────────────
-export async function saveGSCMetrics(clientId: string, data: GSCData): Promise<void> {
+export async function saveGSCMetrics(clientId: string, data: GSCData, propertyId?: string): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
+  const resolvedPropertyId = await resolvePropertyId(clientId, propertyId);
   const { error } = await supabase.from('client_integration_metrics').upsert(
     {
       client_id: clientId,
+      property_id: resolvedPropertyId,
       integration_type: 'google_search_console',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       data: data as any,
       date_ref: today,
     },
-    { onConflict: 'client_id,integration_type,date_ref' }
+    { onConflict: 'property_id,integration_type,date_ref' }
   );
   if (error) throw error;
 }
 
 export async function loadCachedGSCMetrics(
-  clientId: string
+  clientId: string,
+  propertyId?: string,
 ): Promise<{ data: GSCData; date_ref: string } | null> {
-  const { data, error } = await supabase
+  const query = supabase
     .from('client_integration_metrics')
     .select('data, date_ref')
-    .eq('client_id', clientId)
     .eq('integration_type', 'google_search_console')
     .order('date_ref', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  const { data, error } = propertyId
+    ? await query.eq('property_id', propertyId).maybeSingle()
+    : await query.eq('client_id', clientId).maybeSingle();
 
   if (error || !data) return null;
   return { data: data.data as unknown as GSCData, date_ref: data.date_ref };

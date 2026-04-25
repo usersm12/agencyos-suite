@@ -29,6 +29,7 @@ import { SocialPostLog } from "@/components/clients/SocialPostLog";
 import { ClientDocuments } from "@/components/clients/ClientDocuments";
 import { ClientTimeReport } from "@/components/clients/ClientTimeReport";
 import { WebProjectMiniCard } from "@/components/webproject/WebProjectMiniCard";
+import { PropertiesSection } from "@/components/clients/PropertiesSection";
 
 export default function ClientProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -165,18 +166,27 @@ export default function ClientProfilePage() {
             <Tabs defaultValue="overview" className="w-full">
               <TabsList className="mb-4 flex-wrap h-auto gap-1">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
+                {/* Properties tab — only for multisite clients */}
+                {client.is_multisite && (
+                  <TabsTrigger value="properties">Properties</TabsTrigger>
+                )}
                 <TabsTrigger value="goals">Performance vs Goals</TabsTrigger>
                 <TabsTrigger value="backlinks">Backlinks</TabsTrigger>
                 <TabsTrigger value="social">Social Posts</TabsTrigger>
                 <TabsTrigger value="time">Time</TabsTrigger>
                 <TabsTrigger value="documents">Documents</TabsTrigger>
-                <TabsTrigger value="integrations">Integrations</TabsTrigger>
+                {/* Single-site clients show Integrations tab here;
+                    multisite clients manage integrations per-property */}
+                {!client.is_multisite && (
+                  <TabsTrigger value="integrations">Integrations</TabsTrigger>
+                )}
               </TabsList>
 
               <TabsContent value="overview" className="space-y-4">
                 <WebProjectMiniCard clientId={id!} />
                 <TeamAssignmentsSection clientId={id!} />
-                <ActiveServicesSection clientId={id!} />
+                {/* For multisite: prompt user to pick a property for services */}
+                {!client.is_multisite && <ActiveServicesSection clientId={id!} />}
                 {client.notes && (
                   <div className="rounded-xl border bg-card text-card-foreground shadow p-6">
                     <h3 className="font-semibold mb-4 text-lg">Client Notes</h3>
@@ -184,6 +194,13 @@ export default function ClientProfilePage() {
                   </div>
                 )}
               </TabsContent>
+
+              {/* Properties tab — multisite only */}
+              {client.is_multisite && (
+                <TabsContent value="properties" className="space-y-4">
+                  <PropertiesSection clientId={id!} />
+                </TabsContent>
+              )}
 
               <TabsContent value="goals" className="space-y-4">
                 <GoalsPerformance clientId={id!} />
@@ -205,12 +222,14 @@ export default function ClientProfilePage() {
                 <ClientDocuments clientId={id!} />
               </TabsContent>
 
-              <TabsContent value="integrations" className="space-y-6">
-                {/* Sensitive credentials (CMS, API keys) — owners + managers only */}
-                {!isTeamMember && <ClientCredentials clientId={id!} />}
-                <GoogleSearchConsole clientId={id!} />
-                <GoogleAnalytics clientId={id!} />
-              </TabsContent>
+              {/* Integrations tab — single-site clients only */}
+              {!client.is_multisite && (
+                <TabsContent value="integrations" className="space-y-6">
+                  {!isTeamMember && <ClientCredentials clientId={id!} />}
+                  <GoogleSearchConsole clientId={id!} />
+                  <GoogleAnalytics clientId={id!} />
+                </TabsContent>
+              )}
             </Tabs>
           </div>
         </div>

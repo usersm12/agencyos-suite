@@ -21,6 +21,7 @@ import { useAuth } from "@/contexts/AuthContext";
 const addTaskSchema = z.object({
   title: z.string().min(2, "Title is required"),
   client_id: z.string().min(1, "Client is required"),
+  property_id: z.string().optional(),
   service_type: z.string().optional(),
   assigned_to: z.string().optional(),
   due_date: z.date().optional(),
@@ -44,18 +45,37 @@ export function AddTaskModal() {
 
   const form = useForm<AddTaskFormValues>({
     resolver: zodResolver(addTaskSchema),
-    defaultValues: { title: "", client_id: "", service_type: undefined, assigned_to: undefined, priority: "medium", description: "" },
+    defaultValues: { title: "", client_id: "", property_id: undefined, service_type: undefined, assigned_to: undefined, priority: "medium", description: "" },
   });
+
+  const selectedClientId = form.watch("client_id");
 
   const { data: clients = [] } = useQuery({
     queryKey: ["task-modal-clients"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("clients").select("id, name").order("name");
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id, name, is_multisite")
+        .order("name");
       if (error) throw error;
       return data || [];
     },
     enabled: open,
     refetchOnMount: "always",
+  });
+
+  const selectedClient = clients.find((c) => c.id === selectedClientId);
+
+  const { data: properties = [] } = useQuery({
+    queryKey: ["task-modal-properties", selectedClientId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_properties_for_client", {
+        p_client_id: selectedClientId,
+      });
+      if (error) throw error;
+      return (data as Array<{ id: string; name: string; is_primary: boolean }>) || [];
+    },
+    enabled: !!selectedClientId && !!selectedClient?.is_multisite,
   });
 
   const { data: team } = useQuery({
@@ -82,6 +102,7 @@ export function AddTaskModal() {
         .insert({
           title: data.title,
           client_id: data.client_id,
+          property_id: data.property_id || null,
           service_type: data.service_type || null,
           assigned_to: data.assigned_to || null,
           due_date: data.due_date ? format(data.due_date, "yyyy-MM-dd") : null,
@@ -137,7 +158,10 @@ export function AddTaskModal() {
               <FormField control={form.control} name="client_id" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Client *</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  <Select value={field.value} onValueChange={(val) => {
+                    field.onChange(val);
+                    form.setValue("property_id", undefined); // reset property on client change
+                  }}>
                     <FormControl>
                       <SelectTrigger><SelectValue placeholder="Select a client" /></SelectTrigger>
                     </FormControl>
@@ -148,6 +172,28 @@ export function AddTaskModal() {
                   <FormMessage />
                 </FormItem>
               )} />
+
+              {/* Property — only for multisite clients */}
+              {selectedClient?.is_multisite && (
+                <FormField control={form.control} name="property_id" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Property</FormLabel>
+                    <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Select a property" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {properties.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}{p.is_primary ? " ★" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              )}
 
               {/* Service Type */}
               <FormField control={form.control} name="service_type" render={({ field }) => (
