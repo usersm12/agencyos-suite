@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CheckSquare, Circle, Trash2, Plus, CalendarIcon, UserCircle, Clock4, ShieldCheck, ShieldX, Flag } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { sendPushToUsers } from "@/lib/pushNotify";
 
 interface Props {
   taskId: string;
@@ -131,9 +132,12 @@ export function SubtasksSection({ taskId, onOpenCountChange }: Props) {
       const { data, error } = await supabase.rpc("request_subtask_approval", { p_subtask_id: subtaskId });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
+      return data as any;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success("Submitted for approval — manager notified");
+      const notified: string[] = data?.notified_users ?? [];
+      if (notified.length) sendPushToUsers(notified, data.title, data.body, `/tasks?open=${taskId}`);
       queryClient.invalidateQueries({ queryKey: ["subtasks", taskId] });
       queryClient.invalidateQueries({ queryKey: ["subtask-counts"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
@@ -150,9 +154,12 @@ export function SubtasksSection({ taskId, onOpenCountChange }: Props) {
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
+      return data as any;
     },
-    onSuccess: (_d, vars) => {
+    onSuccess: (data, vars) => {
       toast.success(vars.approved ? "Subtask approved ✓" : "Subtask sent back for revision");
+      const notified: string[] = data?.notified_users ?? [];
+      if (notified.length) sendPushToUsers(notified, data.title, data.body, `/tasks?open=${taskId}`);
       setRejectingId(null);
       setRejectReason("");
       queryClient.invalidateQueries({ queryKey: ["subtasks", taskId] });

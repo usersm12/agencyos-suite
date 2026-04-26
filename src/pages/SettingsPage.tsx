@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Check, Mail, Edit2 } from "lucide-react";
+import { Check, Mail, Edit2, Bell, BellOff, BellRing } from "lucide-react";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import ServicesMaster from "@/components/settings/ServicesMaster";
@@ -16,6 +17,7 @@ import { EditProfileModal } from "@/components/team/EditProfileModal";
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("services");
   const [editingMember, setEditingMember] = useState<any | null>(null);
+  const { isSupported, permission, subscribed, loading: pushLoading, subscribe, unsubscribe } = usePushNotifications();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Support ?tab=sops deep-link (e.g. from SOPGuide "Add SOP" button)
@@ -135,6 +137,57 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="notifications" className="space-y-4">
+          {/* Web Push */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BellRing className="w-5 h-5" /> Browser Push Notifications
+              </CardTitle>
+              <CardDescription>
+                Get OS-level notifications for task assignments, approvals, and mentions — even when this tab is in the background.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 max-w-lg">
+              {!isSupported ? (
+                <div className="flex items-center gap-3 p-4 rounded-lg border bg-muted/30 text-sm text-muted-foreground">
+                  <BellOff className="w-5 h-5 shrink-0" />
+                  Your browser doesn't support web push notifications.
+                </div>
+              ) : permission === "denied" ? (
+                <div className="flex items-center gap-3 p-4 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
+                  <BellOff className="w-5 h-5 shrink-0" />
+                  Notifications are blocked. Enable them in your browser site settings and reload.
+                </div>
+              ) : (
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <Label className="text-base">Enable push notifications</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {subscribed
+                        ? "This browser will receive push notifications."
+                        : "Click to enable — your browser will ask for permission."}
+                    </p>
+                  </div>
+                  {subscribed ? (
+                    <Button variant="outline" size="sm" onClick={unsubscribe} disabled={pushLoading} className="gap-2">
+                      <BellOff className="w-4 h-4" /> Disable
+                    </Button>
+                  ) : (
+                    <Button size="sm" onClick={subscribe} disabled={pushLoading} className="gap-2">
+                      <Bell className="w-4 h-4" /> {pushLoading ? "Enabling…" : "Enable"}
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                Notifications are sent for: task assignments, approval requests, approvals / rejections, and @mentions.
+                Each team member enables this individually per device.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Global alerts */}
           <Card>
             <CardHeader>
               <CardTitle>Global Alerts</CardTitle>

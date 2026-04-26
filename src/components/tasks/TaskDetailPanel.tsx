@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { CheckCircle2, Globe, ShieldCheck, ShieldX, Clock4, Flag } from "lucide-react";
+import { sendPushToUsers } from "@/lib/pushNotify";
 import { TaskDeliverablesForm } from "./TaskDeliverablesForm";
 import { TaskComments } from "./TaskComments";
 import { TaskChecklist } from "./TaskChecklist";
@@ -90,6 +91,11 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       toast.success("Submitted for approval — manager has been notified");
+      // Fire web push to notified managers/owners
+      const notified: string[] = (data as any)?.notified_users ?? [];
+      if (notified.length) {
+        sendPushToUsers(notified, (data as any).title, (data as any).body, `/tasks?open=${taskId}`);
+      }
       queryClient.invalidateQueries({ queryKey: ["tasks-list"] });
       queryClient.invalidateQueries({ queryKey: ["task", taskId] });
     } catch (err: any) {
@@ -113,6 +119,10 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
       toast.success(approved ? "Task approved ✓" : "Task sent back for revision");
       setShowRejectBox(false);
       setRejectReason("");
+      const notified: string[] = (data as any)?.notified_users ?? [];
+      if (notified.length) {
+        sendPushToUsers(notified, (data as any).title, (data as any).body, `/tasks?open=${taskId}`);
+      }
       queryClient.invalidateQueries({ queryKey: ["tasks-list"] });
       queryClient.invalidateQueries({ queryKey: ["task", taskId] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
