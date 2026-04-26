@@ -143,7 +143,7 @@ export default function ClientProfilePage() {
               <div className="flex justify-between items-center text-sm">
                 <span className="text-muted-foreground">Status</span>
                 <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${client.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
-                  {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
+                  {client.status ? client.status.charAt(0).toUpperCase() + client.status.slice(1) : 'Active'}
                 </span>
               </div>
               <div className="flex justify-between items-center text-sm">
