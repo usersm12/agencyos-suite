@@ -6,9 +6,11 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CheckSquare, Circle, Trash2, Plus, CalendarIcon, UserCircle } from "lucide-react";
+import { CheckSquare, Circle, Trash2, Plus, CalendarIcon, UserCircle, Clock4, ShieldCheck, ShieldX, Flag } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -17,16 +19,26 @@ interface Props {
   onOpenCountChange?: (count: number) => void;
 }
 
+// For subtasks that don't need approval — direct cycle
 const STATUS_CYCLE: Record<string, string> = {
   not_started: "in_progress",
   in_progress: "completed",
   completed: "not_started",
 };
 
+// For approval-required subtasks — in_progress goes to pending_approval via RPC, not direct cycle
+const STATUS_CYCLE_APPROVAL: Record<string, string> = {
+  not_started: "in_progress",
+  completed: "not_started",
+};
+
 export function SubtasksSection({ taskId, onOpenCountChange }: Props) {
   const { profile } = useAuth();
+  const isManagerOrOwner = profile?.role === "manager" || profile?.role === "owner";
   const queryClient = useQueryClient();
   const [newTitle, setNewTitle] = useState("");
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   const { data: profiles = [] } = useQuery({
     queryKey: ["profiles-list"],
@@ -114,9 +126,47 @@ export function SubtasksSection({ taskId, onOpenCountChange }: Props) {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const submitSubtaskApproval = useMutation({
+    mutationFn: async (subtaskId: string) => {
+      const { data, error } = await supabase.rpc("request_subtask_approval", { p_subtask_id: subtaskId });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+    },
+    onSuccess: () => {
+      toast.success("Submitted for approval — manager notified");
+      queryClient.invalidateQueries({ queryKey: ["subtasks", taskId] });
+      queryClient.invalidateQueries({ queryKey: ["subtask-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const resolveSubtaskApproval = useMutation({
+    mutationFn: async ({ subtaskId, approved, reason }: { subtaskId: string; approved: boolean; reason?: string }) => {
+      const { data, error } = await supabase.rpc("resolve_subtask_approval", {
+        p_subtask_id: subtaskId,
+        p_approved: approved,
+        p_reason: reason || null,
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+    },
+    onSuccess: (_d, vars) => {
+      toast.success(vars.approved ? "Subtask approved ✓" : "Subtask sent back for revision");
+      setRejectingId(null);
+      setRejectReason("");
+      queryClient.invalidateQueries({ queryKey: ["subtasks", taskId] });
+      queryClient.invalidateQueries({ queryKey: ["subtask-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   const statusIcon = (status: string) => {
     if (status === "completed")
       return <CheckSquare className="w-4 h-4 text-green-500 shrink-0" />;
+    if (status === "pending_approval")
+      return <Clock4 className="w-4 h-4 text-amber-500 shrink-0" />;
     if (status === "in_progress")
       return (
         <div className="w-4 h-4 rounded-full border-2 border-blue-500 flex items-center justify-center shrink-0">
@@ -160,20 +210,31 @@ export function SubtasksSection({ taskId, onOpenCountChange }: Props) {
       ) : (
         <div className="rounded-lg border divide-y overflow-hidden">
           {list.map((st) => (
-            <div
-              key={st.id}
-              className="flex items-center gap-2.5 px-3 py-2.5 bg-card group hover:bg-muted/20 transition-colors"
-            >
-              {/* Status toggle */}
+            <div key={st.id} className="bg-card group hover:bg-muted/20 transition-colors">
+              <div className="flex items-center gap-2.5 px-3 py-2.5">
+              {/* Status toggle — disabled while pending_approval */}
               <button
-                onClick={() =>
+                onClick={() => {
+                  if (st.status === "pending_approval") return; // locked
+                  if (st.needs_approval && st.status === "in_progress") {
+                    // Submit for approval instead of cycling to completed
+                    submitSubtaskApproval.mutate(st.id);
+                    return;
+                  }
+                  const cycle = st.needs_approval ? STATUS_CYCLE_APPROVAL : STATUS_CYCLE;
                   patchSubtask.mutate({
                     id: st.id,
-                    patch: { status: STATUS_CYCLE[st.status] || "not_started" },
-                  })
+                    patch: { status: cycle[st.status] || "not_started" },
+                  });
+                }}
+                className={`shrink-0 focus:outline-none ${st.status === "pending_approval" ? "cursor-default" : ""}`}
+                title={
+                  st.status === "pending_approval"
+                    ? "Awaiting approval"
+                    : st.needs_approval && st.status === "in_progress"
+                    ? "Submit for approval"
+                    : "Click to cycle status"
                 }
-                className="shrink-0 focus:outline-none"
-                title="Click to cycle status"
               >
                 {statusIcon(st.status)}
               </button>
@@ -187,17 +248,50 @@ export function SubtasksSection({ taskId, onOpenCountChange }: Props) {
                 {st.title}
               </span>
 
+              {/* Needs-approval flag toggle */}
+              {st.status === "not_started" || st.status === "in_progress" ? (
+                <button
+                  title={st.needs_approval ? "Remove approval requirement" : "Flag for approval"}
+                  className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => patchSubtask.mutate({ id: st.id, patch: { needs_approval: !st.needs_approval } })}
+                >
+                  <Flag className={`w-3.5 h-3.5 ${st.needs_approval ? "text-amber-500" : "text-muted-foreground/40"}`} />
+                </button>
+              ) : null}
+
               {/* Status badge */}
               {st.status !== "not_started" && (
                 <span
                   className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${
                     st.status === "completed"
                       ? "bg-green-100 text-green-700"
+                      : st.status === "pending_approval"
+                      ? "bg-amber-100 text-amber-700"
                       : "bg-blue-100 text-blue-700"
                   }`}
                 >
-                  {st.status === "completed" ? "Done" : "In Progress"}
+                  {st.status === "completed" ? "Done" : st.status === "pending_approval" ? "Pending Approval" : "In Progress"}
                 </span>
+              )}
+
+              {/* Manager: approve/reject buttons when pending */}
+              {st.status === "pending_approval" && isManagerOrOwner && rejectingId !== st.id && (
+                <div className="flex gap-1 shrink-0">
+                  <button
+                    className="text-green-600 hover:text-green-700 p-0.5"
+                    title="Approve"
+                    onClick={() => resolveSubtaskApproval.mutate({ subtaskId: st.id, approved: true })}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                  </button>
+                  <button
+                    className="text-red-500 hover:text-red-600 p-0.5"
+                    title="Reject"
+                    onClick={() => setRejectingId(st.id)}
+                  >
+                    <ShieldX className="w-4 h-4" />
+                  </button>
+                </div>
               )}
 
               {/* Assignee picker */}
@@ -295,6 +389,39 @@ export function SubtasksSection({ taskId, onOpenCountChange }: Props) {
                 <Trash2 className="w-3 h-3" />
               </Button>
             </div>
+
+            {/* Inline rejection reason input */}
+            {rejectingId === st.id && isManagerOrOwner && (
+              <div className="px-3 pb-2.5 pt-1 border-t border-amber-100 bg-red-50/60 space-y-1.5">
+                <Textarea
+                  autoFocus
+                  placeholder="Reason for rejection (optional)…"
+                  className="h-16 text-xs"
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                />
+                <div className="flex gap-2 justify-end">
+                  <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => { setRejectingId(null); setRejectReason(""); }}>
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-6 text-xs bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() => resolveSubtaskApproval.mutate({ subtaskId: st.id, approved: false, reason: rejectReason.trim() || undefined })}
+                  >
+                    Send Back
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Rejection reason display */}
+            {st.rejection_reason && st.status === "in_progress" && (
+              <div className="px-3 pb-2 flex items-start gap-1.5">
+                <ShieldX className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
+                <p className="text-[11px] text-red-500 leading-snug">{st.rejection_reason}</p>
+              </div>
+            )}
           ))}
 
           {list.length === 0 && (

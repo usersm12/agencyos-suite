@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { Calendar, AlertCircle } from "lucide-react";
+import { Calendar, AlertCircle, Clock4 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,10 +16,11 @@ interface TasksKanbanProps {
 export function TasksKanban({ tasks, onTaskClick, selectedIds = [], onSelectIds }: TasksKanbanProps) {
   const queryClient = useQueryClient();
   const columns = [
-    { id: "not_started", title: "Not Started", color: "bg-gray-100 dark:bg-gray-800" },
-    { id: "in_progress", title: "In Progress", color: "bg-blue-50 dark:bg-blue-900/20" },
-    { id: "blocked", title: "Blocked", color: "bg-red-50 dark:bg-red-900/20" },
-    { id: "completed", title: "Completed", color: "bg-green-50 dark:bg-green-900/20" },
+    { id: "not_started",      title: "Not Started",      color: "bg-gray-100 dark:bg-gray-800" },
+    { id: "in_progress",      title: "In Progress",      color: "bg-blue-50 dark:bg-blue-900/20" },
+    { id: "pending_approval", title: "Pending Approval", color: "bg-amber-50 dark:bg-amber-900/20" },
+    { id: "blocked",          title: "Blocked",          color: "bg-red-50 dark:bg-red-900/20" },
+    { id: "completed",        title: "Completed",        color: "bg-green-50 dark:bg-green-900/20" },
   ];
 
   const getPriorityColor = (priority: string) => {
@@ -54,7 +55,7 @@ export function TasksKanban({ tasks, onTaskClick, selectedIds = [], onSelectIds 
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 overflow-x-auto pb-4">
+    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 overflow-x-auto pb-4">
       {columns.map((col) => {
         const columnTasks = tasks.filter(t => t.status === col.id);
         
@@ -102,7 +103,12 @@ export function TasksKanban({ tasks, onTaskClick, selectedIds = [], onSelectIds 
                   </div>
 
                   
-                  <h4 className="text-sm font-semibold mb-3 leading-snug">{task.title}</h4>
+                  <h4 className="text-sm font-semibold mb-3 leading-snug flex items-center gap-1.5">
+                    {task.status === "pending_approval" && (
+                      <Clock4 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    )}
+                    {task.title}
+                  </h4>
                   
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <div className="flex items-center gap-1">

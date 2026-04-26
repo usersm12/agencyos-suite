@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { Bell, CheckCheck, AtSign, UserPlus, AlertTriangle, ListTodo } from "lucide-react";
+import { Bell, CheckCheck, AtSign, UserPlus, AlertTriangle, ListTodo, Clock4, ShieldCheck, ShieldX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -70,6 +70,15 @@ export function NotificationBell() {
         return <ListTodo className="w-3.5 h-3.5 text-purple-500 shrink-0" />;
       case "task_overdue":
         return <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />;
+      case "approval_requested":
+      case "subtask_approval_requested":
+        return <Clock4 className="w-3.5 h-3.5 text-amber-500 shrink-0" />;
+      case "task_approved":
+      case "subtask_approved":
+        return <ShieldCheck className="w-3.5 h-3.5 text-green-500 shrink-0" />;
+      case "task_rejected":
+      case "subtask_rejected":
+        return <ShieldX className="w-3.5 h-3.5 text-red-500 shrink-0" />;
       default:
         return <Bell className="w-3.5 h-3.5 text-muted-foreground shrink-0" />;
     }

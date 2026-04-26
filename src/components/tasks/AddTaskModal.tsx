@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Plus } from "lucide-react";
@@ -27,6 +28,7 @@ const addTaskSchema = z.object({
   due_date: z.date().optional(),
   priority: z.enum(["low", "medium", "high"]).default("medium"),
   description: z.string().optional(),
+  needs_approval: z.boolean().default(false),
 });
 
 type AddTaskFormValues = z.infer<typeof addTaskSchema>;
@@ -45,7 +47,7 @@ export function AddTaskModal() {
 
   const form = useForm<AddTaskFormValues>({
     resolver: zodResolver(addTaskSchema),
-    defaultValues: { title: "", client_id: "", property_id: undefined, service_type: undefined, assigned_to: undefined, priority: "medium", description: "" },
+    defaultValues: { title: "", client_id: "", property_id: undefined, service_type: undefined, assigned_to: undefined, priority: "medium", description: "", needs_approval: false },
   });
 
   const selectedClientId = form.watch("client_id");
@@ -108,6 +110,7 @@ export function AddTaskModal() {
           due_date: data.due_date ? format(data.due_date, "yyyy-MM-dd") : null,
           priority: data.priority,
           description: data.description || null,
+          needs_approval: data.needs_approval,
         })
         .select("id")
         .single();
@@ -274,6 +277,20 @@ export function AddTaskModal() {
                   <Textarea className="min-h-[100px]" placeholder="Add context or instructions..." {...field} />
                 </FormControl>
                 <FormMessage />
+              </FormItem>
+            )} />
+
+            <FormField control={form.control} name="needs_approval" render={({ field }) => (
+              <FormItem className="flex items-center justify-between rounded-lg border px-4 py-3">
+                <div>
+                  <FormLabel className="text-sm font-medium">Requires approval to complete</FormLabel>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Assignee must submit for manager approval before marking this task done.
+                  </p>
+                </div>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
               </FormItem>
             )} />
 
