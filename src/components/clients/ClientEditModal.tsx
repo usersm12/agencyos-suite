@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Pencil } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { CURRENCIES } from "@/lib/currencies";
 
 import { Button } from "@/components/ui/button";
@@ -29,10 +30,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
 
 const editClientSchema = z.object({
   name: z.string().min(2, "Name is required"),
+  is_multisite: z.boolean().default(false),
   email: z.string().email("Must be a valid email").optional().or(z.literal('')),
   phone: z.string().optional().or(z.literal('')),
   company: z.string().optional().or(z.literal('')),
@@ -58,6 +62,8 @@ interface ClientEditModalProps {
 export function ClientEditModal({ clientId, clientData, children }: ClientEditModalProps) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { profile } = useAuth();
+  const isOwner = profile?.role === "owner";
 
   const form = useForm<EditClientFormValues>({
     resolver: zodResolver(editClientSchema),
@@ -83,6 +89,7 @@ export function ClientEditModal({ clientId, clientData, children }: ClientEditMo
     if (clientData && open) {
       form.reset({
         name: clientData.name || "",
+        is_multisite: clientData.is_multisite ?? false,
         email: clientData.email || "",
         phone: clientData.phone || "",
         company: clientData.company || "",
@@ -129,6 +136,7 @@ export function ClientEditModal({ clientId, clientData, children }: ClientEditMo
         p_manager_id:              (data.manager_id && data.manager_id !== 'none') ? data.manager_id : null,
         p_status:                  data.status,
         p_notes:                   data.notes || null,
+        p_is_multisite:            isOwner ? data.is_multisite : null,
       });
 
       if (error) throw error;
@@ -375,6 +383,40 @@ export function ClientEditModal({ clientId, clientData, children }: ClientEditMo
                 )}
               />
             </div>
+
+            {/* Multiple Properties toggle — owners only */}
+            {isOwner && (
+              <>
+                <Separator />
+                <FormField
+                  control={form.control}
+                  name="is_multisite"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                      <div className="space-y-0.5">
+                        <FormLabel className="text-base">Multiple Properties</FormLabel>
+                        <p className="text-sm text-muted-foreground">
+                          Enable if this client has more than one website, app, or subdomain.
+                          Once enabled, a <strong>Properties</strong> tab appears on their profile
+                          where you can manage each site independently.
+                        </p>
+                        {field.value && (
+                          <p className="text-xs text-amber-600 mt-1">
+                            ⚠ Disabling this hides the Properties tab but keeps all property data.
+                          </p>
+                        )}
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
