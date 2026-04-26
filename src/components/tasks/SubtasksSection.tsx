@@ -98,13 +98,16 @@ export function SubtasksSection({ taskId, onOpenCountChange }: Props) {
       if (error) throw error;
       // Notify assigned user (non-blocking)
       if (patch.assigned_to && patch.assigned_to !== profile?.id) {
+        const subtaskTitle = list.find((s) => s.id === id)?.title || "A subtask was assigned to you";
         supabase.from("notifications").insert({
           user_id: patch.assigned_to,
           type: "subtask_assigned",
           title: "Subtask assigned to you",
-          body: list.find((s) => s.id === id)?.title || "A subtask was assigned to you",
+          body: subtaskTitle,
           task_id: taskId,
         }).then(() => {});
+        // Web push
+        sendPushToUsers([patch.assigned_to], "Subtask assigned to you", subtaskTitle, `/tasks?open=${taskId}`);
       }
     },
     onSuccess: () => {

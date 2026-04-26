@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Send } from "lucide-react";
+import { sendPushToUsers } from "@/lib/pushNotify";
 
 export function TaskComments({ taskId }: { taskId: string }) {
   const { profile } = useAuth();
@@ -85,6 +86,14 @@ export function TaskComments({ taskId }: { taskId: string }) {
 
         if (notifInserts.length > 0) {
           await supabase.from("notifications").insert(notifInserts);
+          // Fire web push for each mentioned user
+          const mentionedIds = notifInserts.map((n: any) => n.user_id);
+          sendPushToUsers(
+            mentionedIds,
+            `${profile?.full_name || "Someone"} mentioned you`,
+            content.length > 100 ? content.substring(0, 100) + "…" : content,
+            `/tasks?open=${taskId}`,
+          );
         }
       }
     },

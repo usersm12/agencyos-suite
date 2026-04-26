@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { sendPushToUsers } from "@/lib/pushNotify";
 
 const addTaskSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -116,6 +117,20 @@ export function AddTaskModal() {
         .single();
 
       if (error) throw error;
+
+      // Notify + push the assignee (if not the creator)
+      if (newTask && data.assigned_to && data.assigned_to !== profile?.id) {
+        const clientName = clients.find((c) => c.id === data.client_id)?.name || "";
+        const notifBody = data.title + (clientName ? ` · ${clientName}` : "");
+        supabase.from("notifications").insert({
+          user_id: data.assigned_to,
+          type: "task_assigned",
+          title: "New task assigned to you",
+          body: notifBody,
+          task_id: newTask.id,
+        }).then(() => {});
+        sendPushToUsers([data.assigned_to], "New task assigned to you", notifBody, `/tasks?open=${newTask.id}`);
+      }
 
       if (newTask && data.service_type) {
         const autoSubtasks = getAutoSubtasks(data.service_type);
