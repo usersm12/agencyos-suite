@@ -62,9 +62,20 @@ interface ClientEditModalProps {
 export function ClientEditModal({ clientId, clientData, children }: ClientEditModalProps) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
-  const { profile, loading: authLoading } = useAuth();
-  // Use profile once it resolves; don't permanently lock out while auth is still initialising
-  const isOwner = profile?.role === "owner";
+  const { profile } = useAuth();
+
+  // Directly fetch role via RPC so we're never dependent on context timing
+  const { data: roleData } = useQuery({
+    queryKey: ['my-role'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_my_role');
+      if (error) throw error;
+      return data as string | null;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const isOwner = (roleData ?? profile?.role) === "owner";
 
   const form = useForm<EditClientFormValues>({
     resolver: zodResolver(editClientSchema),
@@ -386,7 +397,7 @@ export function ClientEditModal({ clientId, clientData, children }: ClientEditMo
             </div>
 
             {/* Multiple Properties toggle — owners only */}
-            {!authLoading && isOwner && (
+            {isOwner && (
               <>
                 <Separator />
                 <FormField
