@@ -62,7 +62,8 @@ interface ClientEditModalProps {
 export function ClientEditModal({ clientId, clientData, children }: ClientEditModalProps) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
+  // Use profile once it resolves; don't permanently lock out while auth is still initialising
   const isOwner = profile?.role === "owner";
 
   const form = useForm<EditClientFormValues>({
@@ -385,7 +386,7 @@ export function ClientEditModal({ clientId, clientData, children }: ClientEditMo
             </div>
 
             {/* Multiple Properties toggle — owners only */}
-            {isOwner && (
+            {!authLoading && isOwner && (
               <>
                 <Separator />
                 <FormField
