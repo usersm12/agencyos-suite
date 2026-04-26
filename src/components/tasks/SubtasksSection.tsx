@@ -422,6 +422,7 @@ export function SubtasksSection({ taskId, onOpenCountChange }: Props) {
                 <p className="text-[11px] text-red-500 leading-snug">{st.rejection_reason}</p>
               </div>
             )}
+            </div>
           ))}
 
           {list.length === 0 && (
