@@ -173,6 +173,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
   const clientId = task?.client_id || null;
 
   return (
+    <>
     <Sheet open={!!taskId} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="w-full sm:max-w-2xl overflow-y-auto outline-none">
         {isLoading ? (
@@ -542,5 +543,6 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
         onClose={() => setEditOpen(false)}
       />
     )}
+    </>
   );
 }
