@@ -41,8 +41,8 @@ export function TaskEditModal({ task, open, onClose }: Props) {
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      title: "", client_id: "", assigned_to: "", priority: "medium",
-      due_date: "", service_type: "", description: "", needs_approval: false,
+      title: "", client_id: "none", assigned_to: "none", priority: "medium",
+      due_date: "", service_type: "none", description: "", needs_approval: false,
     },
   });
 
@@ -51,11 +51,11 @@ export function TaskEditModal({ task, open, onClose }: Props) {
     if (task && open) {
       form.reset({
         title:          task.title ?? "",
-        client_id:      task.client_id ?? "",
-        assigned_to:    task.assigned_to ?? "",
+        client_id:      task.client_id ?? "none",
+        assigned_to:    task.assigned_to ?? "none",
         priority:       task.priority ?? "medium",
         due_date:       task.due_date ? String(task.due_date).split("T")[0] : "",
-        service_type:   task.service_type ?? "",
+        service_type:   task.service_type ?? "none",
         description:    task.description ?? "",
         needs_approval: task.needs_approval ?? false,
       });
@@ -84,15 +84,16 @@ export function TaskEditModal({ task, open, onClose }: Props) {
 
   async function onSubmit(values: FormValues) {
     try {
+      const none = (v?: string) => (!v || v === "none" ? null : v);
       const { error } = await supabase
         .from("tasks")
         .update({
           title:          values.title,
-          client_id:      values.client_id || null,
-          assigned_to:    values.assigned_to || null,
+          client_id:      none(values.client_id),
+          assigned_to:    none(values.assigned_to),
           priority:       values.priority,
           due_date:       values.due_date || null,
-          service_type:   values.service_type || null,
+          service_type:   none(values.service_type),
           description:    values.description || null,
           needs_approval: values.needs_approval,
         })
@@ -137,7 +138,7 @@ export function TaskEditModal({ task, open, onClose }: Props) {
                       <SelectTrigger><SelectValue placeholder="No client" /></SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">No client</SelectItem>
+                      <SelectItem value="none">No client</SelectItem>
                       {clients.map((c: any) => (
                         <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                       ))}
@@ -155,7 +156,7 @@ export function TaskEditModal({ task, open, onClose }: Props) {
                       <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">Unassigned</SelectItem>
+                      <SelectItem value="none">Unassigned</SelectItem>
                       {team.map((t: any) => (
                         <SelectItem key={t.id} value={t.id}>{t.full_name || "Unnamed"}</SelectItem>
                       ))}
@@ -199,7 +200,7 @@ export function TaskEditModal({ task, open, onClose }: Props) {
                       <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       {SERVICES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
