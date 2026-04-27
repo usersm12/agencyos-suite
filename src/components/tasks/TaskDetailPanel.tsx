@@ -13,8 +13,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { CheckCircle2, Globe, ShieldCheck, ShieldX, Clock4, Flag } from "lucide-react";
+import { CheckCircle2, Globe, ShieldCheck, ShieldX, Clock4, Flag, Pencil, Trash2 } from "lucide-react";
 import { sendPushToUsers } from "@/lib/pushNotify";
+import { TaskEditModal } from "./TaskEditModal";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { TaskDeliverablesForm } from "./TaskDeliverablesForm";
 import { TaskComments } from "./TaskComments";
 import { TaskChecklist } from "./TaskChecklist";
@@ -37,6 +43,8 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectBox, setShowRejectBox] = useState(false);
   const [approvalPending, setApprovalPending] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const handleSubtaskCount = useCallback((count: number) => {
     setOpenSubtasksCount(count);
@@ -133,6 +141,22 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
     }
   };
 
+  const handleDeleteTask = async () => {
+    if (!taskId) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from("tasks").delete().eq("id", taskId);
+      if (error) throw error;
+      toast.success("Task deleted");
+      queryClient.invalidateQueries({ queryKey: ["tasks-list"] });
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete task");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleToggleNeedsApproval = async (checked: boolean) => {
     if (!taskId) return;
     try {
@@ -170,12 +194,46 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                   </div>
                   <SheetTitle className="text-2xl leading-tight">{task.title}</SheetTitle>
                 </div>
-                {/* SOP button — always visible in top-right of header */}
-                {task.service_type && (
-                  <div className="shrink-0 mt-1">
-                    <SOPGuide serviceType={task.service_type} />
-                  </div>
-                )}
+                {/* Action buttons — Edit + Delete for managers/owners; SOP always */}
+                <div className="flex items-center gap-1 shrink-0 mt-1">
+                  {task.service_type && <SOPGuide serviceType={task.service_type} />}
+                  {isManagerOrOwner && (
+                    <>
+                      <Button
+                        variant="ghost" size="icon" className="h-8 w-8"
+                        title="Edit task"
+                        onClick={() => setEditOpen(true)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50" title="Delete task">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete task?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently delete "<strong>{task.title}</strong>" and all its subtasks, comments, and attachments. This cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              className="bg-red-600 hover:bg-red-700"
+                              onClick={handleDeleteTask}
+                              disabled={deleting}
+                            >
+                              {deleting ? "Deleting…" : "Delete"}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </>
+                  )}
+                </div>
               </div>
             </SheetHeader>
 
@@ -475,5 +533,14 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
         ) : null}
       </SheetContent>
     </Sheet>
+
+    {/* Edit modal — mounted outside Sheet to avoid stacking context issues */}
+    {task && (
+      <TaskEditModal
+        task={task}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+      />
+    )}
   );
 }
