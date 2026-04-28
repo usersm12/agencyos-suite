@@ -24,14 +24,13 @@ import { GoogleAnalytics } from "@/components/integrations/GoogleAnalytics";
 import { ClientEditModal } from "@/components/clients/ClientEditModal";
 import { TeamAssignmentsSection } from "@/components/clients/TeamAssignmentsSection";
 import { ActiveServicesSection } from "@/components/clients/ActiveServicesSection";
-import { BacklinkManager } from "@/components/clients/BacklinkManager";
-import { SocialPostLog } from "@/components/clients/SocialPostLog";
 import { ClientDocuments } from "@/components/clients/ClientDocuments";
 import { ClientTimeReport } from "@/components/clients/ClientTimeReport";
 import { WebProjectMiniCard } from "@/components/webproject/WebProjectMiniCard";
 import { PropertiesSection } from "@/components/clients/PropertiesSection";
 import { ClientTasksSection } from "@/components/clients/ClientTasksSection";
 import { ClientDeliverablesSummary } from "@/components/clients/ClientDeliverablesSummary";
+import { ClientInsightsPanel } from "@/components/clients/ClientInsightsPanel";
 
 export default function ClientProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -41,6 +40,7 @@ export default function ClientProfilePage() {
   const isTeamMember = profile?.role === "team_member";
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
 
   const { data: client, isLoading } = useQuery({
     queryKey: ['client', id],
@@ -165,7 +165,7 @@ export default function ClientProfilePage() {
 
           {/* Tabs */}
           <div className="col-span-4 lg:col-span-3">
-            <Tabs defaultValue="overview" className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="mb-4 flex-wrap h-auto gap-1">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="tasks">Tasks</TabsTrigger>
@@ -175,6 +175,7 @@ export default function ClientProfilePage() {
                 )}
                 <TabsTrigger value="goals">Performance vs Goals</TabsTrigger>
                 <TabsTrigger value="backlinks">Backlinks</TabsTrigger>
+                <TabsTrigger value="content">Content</TabsTrigger>
                 <TabsTrigger value="social">Social Posts</TabsTrigger>
                 <TabsTrigger value="time">Time</TabsTrigger>
                 <TabsTrigger value="documents">Documents</TabsTrigger>
@@ -186,6 +187,7 @@ export default function ClientProfilePage() {
               </TabsList>
 
               <TabsContent value="overview" className="space-y-4">
+                <ClientInsightsPanel clientId={id!} onTabChange={setActiveTab} />
                 <WebProjectMiniCard clientId={id!} />
                 <TeamAssignmentsSection clientId={id!} />
                 {/* For multisite: prompt user to pick a property for services */}
@@ -215,12 +217,14 @@ export default function ClientProfilePage() {
 
               <TabsContent value="backlinks" className="space-y-4">
                 <ClientDeliverablesSummary clientId={id!} serviceType="Backlinks" />
-                <BacklinkManager clientId={id!} />
+              </TabsContent>
+
+              <TabsContent value="content" className="space-y-4">
+                <ClientDeliverablesSummary clientId={id!} serviceType="Content Writing" />
               </TabsContent>
 
               <TabsContent value="social" className="space-y-4">
                 <ClientDeliverablesSummary clientId={id!} serviceType="Social Media" />
-                <SocialPostLog clientId={id!} />
               </TabsContent>
 
               <TabsContent value="time" className="space-y-4">
