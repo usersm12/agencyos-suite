@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import {
   AlertTriangle, Clock, TrendingDown, TrendingUp, Target,
   Zap, CheckCircle2, Search, MousePointerClick, Activity,
@@ -84,66 +83,80 @@ function computeHealthScore(params: {
   overdueTasks: number;
   trackedMinutes: number;
   estimatedMinutes: number;
-  deliverableCompletion: number; // 0–1 average
-  gscClickChange: number;        // pct, e.g. -15 or +20
+  deliverableCompletion: number; // 0–1 average, only meaningful when countBasedTasks > 0
+  hasCountBasedTasks: boolean;
+  gscClickChange: number;
   hasGSC: boolean;
+  ga4SessionChange: number;
+  hasGA4: boolean;
+  highBounce: boolean;
 }): number {
   const {
     totalTasks, completedThisMonth, overdueTasks,
     trackedMinutes, estimatedMinutes,
-    deliverableCompletion, gscClickChange, hasGSC,
+    deliverableCompletion, hasCountBasedTasks,
+    gscClickChange, hasGSC,
+    ga4SessionChange, hasGA4, highBounce,
   } = params;
 
-  let score = 50; // base
+  // Start healthy — score only drops when real issues exist
+  let score = 80;
 
-  // Task completion (max ±25)
-  if (totalTasks > 0) {
-    const rate = completedThisMonth / totalTasks;
-    score += Math.round(rate * 25);
+  // Overdue tasks — biggest signal (max -30)
+  score -= Math.min(overdueTasks * 10, 30);
+
+  // Task completion this month — positive signal
+  if (totalTasks > 0 && completedThisMonth > 0) {
+    score += Math.min(Math.round((completedThisMonth / totalTasks) * 10), 10);
   }
 
-  // Overdue penalty (max -20)
-  score -= Math.min(overdueTasks * 7, 20);
-
-  // Time budget health (max ±10)
-  if (estimatedMinutes > 0) {
-    const ratio = trackedMinutes / estimatedMinutes;
-    if (ratio <= 1.0)        score += 10;
-    else if (ratio <= 1.2)   score += 3;
-    else                      score -= 5;
+  // Time over budget — negative signal (max -8)
+  if (estimatedMinutes > 0 && trackedMinutes > estimatedMinutes * 1.2) {
+    score -= 8;
   }
 
-  // Deliverable progress (max +15)
-  score += Math.round(deliverableCompletion * 15);
+  // Deliverable progress — only penalise if meaningfully behind
+  if (hasCountBasedTasks) {
+    if (deliverableCompletion < 0.3)       score -= 10;
+    else if (deliverableCompletion < 0.6)  score -= 4;
+    else if (deliverableCompletion >= 0.9) score += 5;
+  }
 
-  // GSC signals (max ±10)
+  // GSC signals
   if (hasGSC) {
-    if (gscClickChange >= 10)       score += 10;
-    else if (gscClickChange >= 0)   score += 5;
-    else if (gscClickChange >= -10) score -= 3;
-    else                             score -= 10;
+    if (gscClickChange >= 15)       score += 8;
+    else if (gscClickChange >= 5)   score += 3;
+    else if (gscClickChange <= -15) score -= 10;
+    else if (gscClickChange <= -8)  score -= 5;
+  }
+
+  // GA4 signals
+  if (hasGA4) {
+    if (ga4SessionChange <= -10)    score -= 7;
+    if (highBounce)                  score -= 5;
+    if (ga4SessionChange >= 10)     score += 5;
   }
 
   return Math.max(0, Math.min(100, score));
 }
 
 function scoreColor(score: number): string {
-  if (score >= 75) return "text-green-600";
-  if (score >= 50) return "text-amber-600";
+  if (score >= 72) return "text-green-600";
+  if (score >= 52) return "text-amber-600";
   return "text-red-600";
 }
 
 function scoreLabel(score: number): string {
   if (score >= 80) return "Healthy";
-  if (score >= 60) return "On track";
-  if (score >= 40) return "Needs attention";
+  if (score >= 65) return "On track";
+  if (score >= 45) return "Needs attention";
   return "At risk";
 }
 
-function scoreBarColor(score: number): string {
-  if (score >= 75) return "[&>div]:bg-green-500";
-  if (score >= 50) return "[&>div]:bg-amber-500";
-  return "[&>div]:bg-red-500";
+function scoreBarBg(score: number): string {
+  if (score >= 72) return "#22c55e"; // green-500
+  if (score >= 52) return "#f59e0b"; // amber-500
+  return "#ef4444"; // red-500
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -325,11 +338,17 @@ export function ClientInsightsPanel({ clientId, onTabChange }: Props) {
         trackedMinutes: totalTracked,
         estimatedMinutes: totalEstimated,
         deliverableCompletion: avgDeliverableCompletion,
+        hasCountBasedTasks: countBasedTasks.length > 0,
         gscClickChange,
         hasGSC: !!gsc,
+        ga4SessionChange,
+        hasGA4: !!ga4,
+        highBounce: !!highBounce,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tasks, completedThisMonth, overdueTasks.length, totalTracked, totalEstimated, avgDeliverableCompletion, gscClickChange, gsc]
+    [tasks, completedThisMonth, overdueTasks.length, totalTracked, totalEstimated,
+     avgDeliverableCompletion, countBasedTasks.length, gscClickChange, gsc,
+     ga4SessionChange, ga4, highBounce]
   );
 
   // ─── Build insights ────────────────────────────────────────────────────────
@@ -574,30 +593,38 @@ export function ClientInsightsPanel({ clientId, onTabChange }: Props) {
               {warningCount} warning{warningCount > 1 ? "s" : ""}
             </span>
           )}
+          {insights.length === 0 && (
+            <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 text-[10px] font-semibold px-2 py-0.5 gap-1">
+              <CheckCircle2 className="w-3 h-3" /> All clear
+            </span>
+          )}
         </div>
 
-        {/* Health score */}
-        <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Health</p>
-            <p className={`text-sm font-bold ${scoreColor(healthScore)}`}>
-              {healthScore}/100 · {scoreLabel(healthScore)}
-            </p>
+        {/* Health score — only shown when there's data to back it up */}
+        {insights.length > 0 && (
+          <div className="flex items-center gap-3">
+            <div className="text-right hidden sm:block">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Health</p>
+              <p className={`text-sm font-bold ${scoreColor(healthScore)}`}>
+                {healthScore}/100 · {scoreLabel(healthScore)}
+              </p>
+            </div>
+            {/* Plain div bar — avoids Tailwind dynamic-class detection issues */}
+            <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${healthScore}%`, backgroundColor: scoreBarBg(healthScore) }}
+              />
+            </div>
           </div>
-          <div className="w-24">
-            <Progress
-              value={healthScore}
-              className={`h-2 ${scoreBarColor(healthScore)}`}
-            />
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Insights grid */}
       {insights.length === 0 ? (
-        <div className="flex items-center justify-center py-8 text-sm text-muted-foreground gap-2">
+        <div className="flex items-center justify-center py-6 text-sm text-muted-foreground gap-2">
           <CheckCircle2 className="w-4 h-4 text-green-500" />
-          Everything looks good — no issues detected.
+          No issues detected — this client is in good shape.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-border">
