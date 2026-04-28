@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { CheckCircle2, Globe, ShieldCheck, ShieldX, Clock4, Flag, Pencil, Trash2 } from "lucide-react";
+import { COUNT_BASED_SERVICES } from "./AddTaskModal";
 import { sendPushToUsers } from "@/lib/pushNotify";
 import { TaskEditModal } from "./TaskEditModal";
 import {
@@ -449,14 +450,6 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                     </div>
                   </div>
                   <Separator />
-                  <SubtasksSection taskId={task.id} onOpenCountChange={handleSubtaskCount} />
-                  <Separator />
-                  <TaskChecklist taskId={task.id} serviceType={task.service_type} />
-                  <Separator />
-                  <TimeTracker taskId={task.id} clientId={clientId} />
-                  <Separator />
-                  <TaskAttachments taskId={task.id} />
-                  <Separator />
                   <div>
                     <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
                       <CheckCircle2 className="w-5 h-5 text-green-500" />
@@ -464,6 +457,14 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                     </h4>
                     <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} targetCount={task.target_count} />
                   </div>
+                  <Separator />
+                  <SubtasksSection taskId={task.id} onOpenCountChange={handleSubtaskCount} />
+                  <Separator />
+                  <TaskChecklist taskId={task.id} serviceType={task.service_type} />
+                  <Separator />
+                  <TimeTracker taskId={task.id} clientId={clientId} />
+                  <Separator />
+                  <TaskAttachments taskId={task.id} />
                 </TabsContent>
 
                 <TabsContent value="comments">
@@ -472,64 +473,87 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                   </div>
                 </TabsContent>
               </Tabs>
-            ) : (
-              <div className="space-y-6">
-                {/* Description */}
-                <div>
-                  <h4 className="text-sm font-semibold mb-2">Description / Notes</h4>
-                  <div className="bg-muted/10 border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap">
-                    {task.description || "No description provided."}
-                  </div>
-                </div>
-
-                <Separator />
-
-                {/* Subtasks */}
-                <SubtasksSection taskId={task.id} onOpenCountChange={handleSubtaskCount} />
-
-                <Separator />
-
-                {/* Checklist */}
-                <TaskChecklist taskId={task.id} serviceType={task.service_type} />
-
-                <Separator />
-
-                {/* Time Tracker */}
-                <TimeTracker taskId={task.id} clientId={clientId} />
-
-                <Separator />
-
-                {/* Attachments */}
-                <TaskAttachments taskId={task.id} />
-
-                <Separator />
-
-                {/* Deliverables */}
-                <div>
-                  <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
-                    <CheckCircle2 className="w-5 h-5 text-green-500" />
-                    Deliverables
-                  </h4>
-                  {task.service_type ? (
-                    <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} targetCount={task.target_count} />
-                  ) : (
-                    <div className="p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
-                      No service type defined for this task.
+            ) : (() => {
+              const isCountBased = !!task.service_type && COUNT_BASED_SERVICES.includes(task.service_type);
+              return (
+                <div className="space-y-6">
+                  {/* Description */}
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2">Description / Notes</h4>
+                    <div className="bg-muted/10 border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap">
+                      {task.description || "No description provided."}
                     </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* ── COUNT-BASED: Deliverables first, then Subtasks, no Checklist ── */}
+                  {isCountBased ? (
+                    <>
+                      {/* Deliverables — top priority for count-based tasks */}
+                      {task.service_type && (
+                        <>
+                          <div>
+                            <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
+                              <CheckCircle2 className="w-5 h-5 text-green-500" />
+                              Deliverables
+                            </h4>
+                            <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} targetCount={task.target_count} />
+                          </div>
+                          <Separator />
+                        </>
+                      )}
+
+                      {/* Subtasks — for team assignment */}
+                      <SubtasksSection taskId={task.id} onOpenCountChange={handleSubtaskCount} />
+                      <Separator />
+                    </>
+                  ) : (
+                    <>
+                      {/* NON-COUNT: Subtasks + Checklist first */}
+                      <SubtasksSection taskId={task.id} onOpenCountChange={handleSubtaskCount} />
+                      <Separator />
+                      <TaskChecklist taskId={task.id} serviceType={task.service_type} />
+                      <Separator />
+
+                      {/* Deliverables */}
+                      <div>
+                        <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
+                          <CheckCircle2 className="w-5 h-5 text-green-500" />
+                          Deliverables
+                        </h4>
+                        {task.service_type ? (
+                          <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} targetCount={task.target_count} />
+                        ) : (
+                          <div className="p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+                            No service type defined for this task.
+                          </div>
+                        )}
+                      </div>
+                      <Separator />
+                    </>
                   )}
-                </div>
 
-                <Separator />
+                  {/* Time Tracker */}
+                  <TimeTracker taskId={task.id} clientId={clientId} />
 
-                {/* Comments */}
-                <div>
-                  <h4 className="font-semibold mb-4">Comments</h4>
-                  <div className="h-[400px] border rounded-lg p-4 bg-muted/10">
-                    <TaskComments taskId={task.id} />
+                  <Separator />
+
+                  {/* Attachments */}
+                  <TaskAttachments taskId={task.id} />
+
+                  <Separator />
+
+                  {/* Comments */}
+                  <div>
+                    <h4 className="font-semibold mb-4">Comments</h4>
+                    <div className="h-[400px] border rounded-lg p-4 bg-muted/10">
+                      <TaskComments taskId={task.id} />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </>
         ) : null}
       </SheetContent>
