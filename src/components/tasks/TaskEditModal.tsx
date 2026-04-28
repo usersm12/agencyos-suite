@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { COUNT_BASED_SERVICES } from "./AddTaskModal";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,6 +24,7 @@ const schema = z.object({
   service_type:    z.string().optional(),
   description:     z.string().optional(),
   needs_approval:  z.boolean().default(false),
+  target_count:    z.number().int().positive().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -33,7 +35,7 @@ interface Props {
   onClose: () => void;
 }
 
-const SERVICES = ["SEO", "Google Ads", "Meta Ads", "Social Media", "Web Development"];
+const SERVICES = ["Backlinks", "Content Writing", "On-Page SEO", "Technical SEO", "Google Ads", "Meta Ads", "Social Media", "Web Development"];
 
 export function TaskEditModal({ task, open, onClose }: Props) {
   const queryClient = useQueryClient();
@@ -42,9 +44,12 @@ export function TaskEditModal({ task, open, onClose }: Props) {
     resolver: zodResolver(schema),
     defaultValues: {
       title: "", client_id: "none", assigned_to: "none", priority: "medium",
-      due_date: "", service_type: "none", description: "", needs_approval: false,
+      due_date: "", service_type: "none", description: "", needs_approval: false, target_count: undefined,
     },
   });
+
+  const selectedService = form.watch("service_type");
+  const isCountBased = !!selectedService && COUNT_BASED_SERVICES.includes(selectedService);
 
   // Populate from task whenever modal opens
   useEffect(() => {
@@ -58,6 +63,7 @@ export function TaskEditModal({ task, open, onClose }: Props) {
         service_type:   task.service_type ?? "none",
         description:    task.description ?? "",
         needs_approval: task.needs_approval ?? false,
+        target_count:   task.target_count ?? undefined,
       });
     }
   }, [task, open, form]);
@@ -96,6 +102,7 @@ export function TaskEditModal({ task, open, onClose }: Props) {
           service_type:   none(values.service_type),
           description:    values.description || null,
           needs_approval: values.needs_approval,
+          target_count:   values.target_count || null,
         })
         .eq("id", task.id);
 
@@ -207,6 +214,29 @@ export function TaskEditModal({ task, open, onClose }: Props) {
                 </FormItem>
               )} />
             </div>
+
+            {/* Target count — only for count-based services */}
+            {isCountBased && (
+              <FormField control={form.control} name="target_count" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {selectedService === "Backlinks" ? "Backlinks to Build This Month" :
+                     selectedService === "Content Writing" ? "Articles to Write This Month" :
+                     "Posts to Publish This Month"}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min={1}
+                      placeholder="e.g. 20"
+                      value={field.value ?? ""}
+                      onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            )}
 
             {/* Description */}
             <FormField control={form.control} name="description" render={({ field }) => (

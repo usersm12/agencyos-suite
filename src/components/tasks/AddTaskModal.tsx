@@ -30,15 +30,35 @@ const addTaskSchema = z.object({
   priority: z.enum(["low", "medium", "high"]).default("medium"),
   description: z.string().optional(),
   needs_approval: z.boolean().default(false),
+  target_count: z.number().int().positive().optional(),
 });
 
 type AddTaskFormValues = z.infer<typeof addTaskSchema>;
 
+// Services where the task has a numeric monthly target (count-based progress)
+export const COUNT_BASED_SERVICES = ["Backlinks", "Content Writing", "Social Media"];
+
 function getAutoSubtasks(serviceType: string): string[] {
-  const lower = serviceType.toLowerCase();
-  if (lower.includes("seo")) return ["Research phase", "Execution phase", "Review and log"];
-  if (lower.includes("web")) return ["Client brief received", "Design approved", "Development complete", "Testing done", "Client sign-off"];
-  return [];
+  switch (serviceType) {
+    case "Backlinks":
+      return ["Research target sites", "Send outreach emails", "Follow up on leads", "Verify links are live", "Log all links in deliverables"];
+    case "Content Writing":
+      return ["Keyword research for articles", "Write draft articles", "Get client approval", "Publish articles", "Submit URLs to Search Console"];
+    case "On-Page SEO":
+      return ["Audit title tags & meta descriptions", "Fix heading structure", "Add internal links", "Optimise images & alt text", "Submit updated URLs"];
+    case "Technical SEO":
+      return ["Run site crawl", "Fix broken links", "Check Core Web Vitals", "Update XML sitemap", "Document fixes"];
+    case "Social Media":
+      return ["Plan content calendar", "Create all visuals & captions", "Get client approval", "Schedule & publish posts", "Log post URLs & metrics"];
+    case "Google Ads":
+      return ["Review search terms & add negatives", "Check Quality Scores", "Review budget pacing", "Optimise bids & audiences", "Prepare client report"];
+    case "Meta Ads":
+      return ["Check ROAS & creative fatigue", "Refresh underperforming creatives", "Review audience performance", "Adjust budgets", "Prepare client report"];
+    case "Web Development":
+      return ["Client brief received", "Design approved", "Development complete", "Testing done", "Client sign-off"];
+    default:
+      return [];
+  }
 }
 
 export function AddTaskModal() {
@@ -48,7 +68,7 @@ export function AddTaskModal() {
 
   const form = useForm<AddTaskFormValues>({
     resolver: zodResolver(addTaskSchema),
-    defaultValues: { title: "", client_id: "", property_id: undefined, service_type: undefined, assigned_to: undefined, priority: "medium", description: "", needs_approval: false },
+    defaultValues: { title: "", client_id: "", property_id: undefined, service_type: undefined, assigned_to: undefined, priority: "medium", description: "", needs_approval: false, target_count: undefined },
   });
 
   const selectedClientId = form.watch("client_id");
@@ -91,7 +111,9 @@ export function AddTaskModal() {
     enabled: open,
   });
 
-  const SERVICES_LIST = ["SEO", "Google Ads", "Meta Ads", "Social Media", "Web Development"];
+  const SERVICES_LIST = ["Backlinks", "Content Writing", "On-Page SEO", "Technical SEO", "Google Ads", "Meta Ads", "Social Media", "Web Development"];
+  const selectedService = form.watch("service_type");
+  const isCountBased = !!selectedService && COUNT_BASED_SERVICES.includes(selectedService);
 
   function handleOpenChange(v: boolean) {
     setOpen(v);
@@ -112,6 +134,7 @@ export function AddTaskModal() {
           priority: data.priority,
           description: data.description || null,
           needs_approval: data.needs_approval,
+          target_count: data.target_count || null,
         })
         .select("id")
         .single();
@@ -228,6 +251,29 @@ export function AddTaskModal() {
                   <FormMessage />
                 </FormItem>
               )} />
+
+              {/* Target count — only for count-based services */}
+              {isCountBased && (
+                <FormField control={form.control} name="target_count" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {selectedService === "Backlinks" ? "Backlinks to Build This Month" :
+                       selectedService === "Content Writing" ? "Articles to Write This Month" :
+                       "Posts to Publish This Month"}
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        placeholder="e.g. 20"
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              )}
 
               {/* Assign To */}
               <FormField control={form.control} name="assigned_to" render={({ field }) => (

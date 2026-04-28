@@ -8,6 +8,24 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { X, GripVertical, ListChecks, ChevronDown, ChevronRight } from "lucide-react";
 
+// Maps service_type values → checklist template keys
+function getTemplateKey(serviceType?: string | null): string | null {
+  if (!serviceType) return null;
+  const s = serviceType.toLowerCase();
+  if (s === "backlinks") return "seo_backlink";
+  if (s === "content writing") return "seo_content";
+  if (s === "on-page seo") return "seo_keywords";
+  if (s === "technical seo") return "seo_technical";
+  if (s === "google ads") return "google_ads";
+  if (s === "meta ads") return "meta_ads";
+  if (s === "social media") return "social_media";
+  if (s === "web development") return "web_dev";
+  // Legacy fallback
+  if (s.includes("seo")) return "seo_backlink";
+  if (s.includes("web")) return "web_dev";
+  return null;
+}
+
 // Default checklist templates keyed by service_type
 const CHECKLIST_TEMPLATES: Record<string, string[]> = {
   seo_backlink: [
@@ -138,7 +156,8 @@ export function TaskChecklist({ taskId, serviceType }: TaskChecklistProps) {
 
   useEffect(() => {
     if (!isLoading && items.length === 0 && serviceType) {
-      const template = CHECKLIST_TEMPLATES[serviceType];
+      const key = getTemplateKey(serviceType);
+      const template = key ? CHECKLIST_TEMPLATES[key] : undefined;
       if (template) populateMutation.mutate(template);
     }
   }, [isLoading, items.length, serviceType]);

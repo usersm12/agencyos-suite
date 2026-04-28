@@ -462,7 +462,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                       <CheckCircle2 className="w-5 h-5 text-green-500" />
                       Deliverables
                     </h4>
-                    <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} />
+                    <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} targetCount={task.target_count} />
                   </div>
                 </TabsContent>
 
@@ -511,7 +511,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                     Deliverables
                   </h4>
                   {task.service_type ? (
-                    <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} />
+                    <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} targetCount={task.target_count} />
                   ) : (
                     <div className="p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
                       No service type defined for this task.
