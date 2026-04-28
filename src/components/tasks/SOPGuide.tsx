@@ -20,22 +20,30 @@ interface SOPGuideProps {
 // Normalize service_type strings to DB keys
 function normalizeServiceType(raw: string): string {
   const lower = raw.toLowerCase().trim();
-  if (lower.includes("seo")) return "seo";
+  if (lower === "backlinks") return "backlinks";
+  if (lower === "content writing") return "content_writing";
+  if (lower === "on-page seo") return "onpage_seo";
+  if (lower === "technical seo") return "technical_seo";
   if (lower.includes("google")) return "google_ads";
   if (lower.includes("meta") || lower.includes("facebook")) return "meta_ads";
   if (lower.includes("social")) return "social_media";
-  if (lower.includes("web")) return "web_dev";
+  if (lower === "web development" || lower.includes("web")) return "web_dev";
   if (lower.includes("email")) return "email_marketing";
+  // Legacy fallback
+  if (lower.includes("seo")) return "backlinks";
   return lower.replace(/\s+/g, "_");
 }
 
-// Map service_type to a default template name for lookup
+// Map service_type DB key to a default template name
 const DEFAULT_TEMPLATE: Record<string, string> = {
-  seo: "backlink_building",
-  google_ads: "campaign_review",
-  meta_ads: "campaign_review",
-  social_media: "monthly_posts",
-  web_dev: "new_project",
+  backlinks:      "link_building",
+  content_writing:"article_writing",
+  onpage_seo:     "onpage_audit",
+  technical_seo:  "technical_audit",
+  google_ads:     "campaign_review",
+  meta_ads:       "campaign_review",
+  social_media:   "monthly_posts",
+  web_dev:        "new_project",
 };
 
 function boldText(text: string): string {
