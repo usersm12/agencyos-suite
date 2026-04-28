@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { formatCurrency } from "@/lib/currencies";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,6 +12,19 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
+
+const CHART_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#f97316", "#84cc16"];
+
+function fmtDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
 
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState("agency");
@@ -183,6 +197,7 @@ export default function ReportsPage() {
           <TabsList>
             <TabsTrigger value="agency">Agency Overview</TabsTrigger>
             <TabsTrigger value="client">Client Performance</TabsTrigger>
+            <TabsTrigger value="time">Time Tracking</TabsTrigger>
           </TabsList>
           
           {activeTab === 'client' && (
@@ -367,7 +382,307 @@ export default function ReportsPage() {
             </Card>
           )}
         </TabsContent>
+        <TabsContent value="time" className="space-y-6">
+          <TimeTrackingTab clients={clients} profiles={profiles || []} />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// ─── Time Tracking Tab ───────────────────────────────────────────────────────
+
+interface TimeTrackingTabProps {
+  clients: any[];
+  profiles: any[];
+}
+
+function TimeTrackingTab({ clients, profiles }: TimeTrackingTabProps) {
+  const now = new Date();
+  const [dateFrom, setDateFrom] = useState<string>(toDateStr(startOfMonth(now)));
+  const [dateTo, setDateTo] = useState<string>(toDateStr(endOfMonth(now)));
+  const [filterClient, setFilterClient] = useState<string>("all");
+  const [filterMember, setFilterMember] = useState<string>("all");
+
+  const { data: rawLogs = [] } = useQuery({
+    queryKey: ["reports-time-logs"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("time_logs")
+        .select("*, profiles(full_name), tasks(title, service_type, client_id, clients(name))")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Quick ranges
+  function applyThisMonth() {
+    setDateFrom(toDateStr(startOfMonth(now)));
+    setDateTo(toDateStr(endOfMonth(now)));
+  }
+  function applyLastMonth() {
+    const last = subMonths(now, 1);
+    setDateFrom(toDateStr(startOfMonth(last)));
+    setDateTo(toDateStr(endOfMonth(last)));
+  }
+  function applyLast3Months() {
+    setDateFrom(toDateStr(startOfMonth(subMonths(now, 2))));
+    setDateTo(toDateStr(endOfMonth(now)));
+  }
+
+  // Filtered logs (client-side)
+  const filteredLogs = useMemo(() => {
+    return rawLogs.filter((l: any) => {
+      const d = new Date(l.created_at);
+      if (dateFrom && d < new Date(dateFrom)) return false;
+      if (dateTo && d > new Date(dateTo + "T23:59:59")) return false;
+      if (filterClient !== "all") {
+        const clientId = l.client_id || l.tasks?.client_id;
+        if (clientId !== filterClient) return false;
+      }
+      if (filterMember !== "all" && l.user_id !== filterMember) return false;
+      return true;
+    });
+  }, [rawLogs, dateFrom, dateTo, filterClient, filterMember]);
+
+  const totalMinutes = useMemo(
+    () => filteredLogs.reduce((s: number, l: any) => s + (l.duration_minutes || 0), 0),
+    [filteredLogs]
+  );
+  const uniqueClients = useMemo(() => {
+    const ids = new Set(filteredLogs.map((l: any) => l.client_id || l.tasks?.client_id).filter(Boolean));
+    return ids.size;
+  }, [filteredLogs]);
+  const avgPerSession = filteredLogs.length > 0 ? totalMinutes / filteredLogs.length : 0;
+
+  // Hours by client (top 8)
+  const byClient = useMemo(() => {
+    const map: Record<string, { name: string; minutes: number }> = {};
+    filteredLogs.forEach((l: any) => {
+      const name = l.tasks?.clients?.name || "Unknown";
+      if (!map[name]) map[name] = { name, minutes: 0 };
+      map[name].minutes += l.duration_minutes || 0;
+    });
+    return Object.values(map)
+      .sort((a, b) => b.minutes - a.minutes)
+      .slice(0, 8)
+      .map((v) => ({ name: v.name, hours: parseFloat((v.minutes / 60).toFixed(1)) }));
+  }, [filteredLogs]);
+
+  // Hours by team member
+  const byMember = useMemo(() => {
+    const map: Record<string, { name: string; minutes: number }> = {};
+    filteredLogs.forEach((l: any) => {
+      const name = l.profiles?.full_name || "Unknown";
+      if (!map[name]) map[name] = { name, minutes: 0 };
+      map[name].minutes += l.duration_minutes || 0;
+    });
+    return Object.values(map).map((v) => ({
+      name: v.name,
+      hours: parseFloat((v.minutes / 60).toFixed(1)),
+    }));
+  }, [filteredLogs]);
+
+  function handleExportCSV() {
+    const headers = ["Date", "Client", "Task", "Service Type", "Team Member", "Duration (mins)", "Notes"];
+    const rows = filteredLogs.map((l: any) => [
+      format(new Date(l.created_at), "yyyy-MM-dd"),
+      l.tasks?.clients?.name || "",
+      l.tasks?.title || "",
+      l.tasks?.service_type || "",
+      l.profiles?.full_name || "",
+      l.duration_minutes || 0,
+      (l.notes || "").replace(/,/g, " "),
+    ]);
+    const csv = [headers.join(","), ...rows.map((r: any[]) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `time-tracking-${format(now, "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-4 pb-4">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">From</span>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-38 text-sm h-8"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">To</span>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-38 text-sm h-8"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Client</span>
+              <Select value={filterClient} onValueChange={setFilterClient}>
+                <SelectTrigger className="w-44 h-8 text-sm">
+                  <SelectValue placeholder="All clients" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Clients</SelectItem>
+                  {clients.map((c: any) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Team Member</span>
+              <Select value={filterMember} onValueChange={setFilterMember}>
+                <SelectTrigger className="w-44 h-8 text-sm">
+                  <SelectValue placeholder="All members" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Members</SelectItem>
+                  {profiles.map((p: any) => (
+                    <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={applyThisMonth}>This Month</Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={applyLastMonth}>Last Month</Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={applyLast3Months}>Last 3 Months</Button>
+            </div>
+            <Button size="sm" className="h-8 text-xs gap-1.5 ml-auto" onClick={handleExportCSV}>
+              <Download className="h-3.5 w-3.5" /> Export CSV
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <p className="text-xs text-muted-foreground mb-1">Total Hours</p>
+            <p className="text-2xl font-bold">{fmtDuration(totalMinutes)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <p className="text-xs text-muted-foreground mb-1">Total Sessions</p>
+            <p className="text-2xl font-bold">{filteredLogs.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <p className="text-xs text-muted-foreground mb-1">Unique Clients</p>
+            <p className="text-2xl font-bold">{uniqueClients}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-4">
+            <p className="text-xs text-muted-foreground mb-1">Avg per Session</p>
+            <p className="text-2xl font-bold">{fmtDuration(Math.round(avgPerSession))}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Hours by Client (Top 8)</CardTitle>
+          </CardHeader>
+          <CardContent className="h-[220px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={byClient} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} width={90} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v) => [`${v}h`, "Hours"]} />
+                <Bar dataKey="hours" fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Hours by Team Member</CardTitle>
+          </CardHeader>
+          <CardContent className="h-[220px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={byMember} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" axisLine={false} tickLine={false} width={90} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v) => [`${v}h`, "Hours"]} />
+                <Bar dataKey="hours" fill={CHART_COLORS[1]} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Detailed table */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Detailed Log</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {filteredLogs.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No time logs for this range.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Task</TableHead>
+                  <TableHead>Service Type</TableHead>
+                  <TableHead>Team Member</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredLogs.map((log: any) => (
+                  <TableRow key={log.id}>
+                    <TableCell className="text-xs">{format(new Date(log.created_at), "MMM d, yyyy")}</TableCell>
+                    <TableCell className="text-xs">{log.tasks?.clients?.name || "-"}</TableCell>
+                    <TableCell className="text-xs max-w-[140px] truncate">{log.tasks?.title || "-"}</TableCell>
+                    <TableCell className="text-xs">
+                      {log.tasks?.service_type ? (
+                        <Badge variant="outline" className="text-xs">
+                          {log.tasks.service_type.replace(/_/g, " ")}
+                        </Badge>
+                      ) : "-"}
+                    </TableCell>
+                    <TableCell className="text-xs">{log.profiles?.full_name || "-"}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="font-mono text-xs">
+                        {fmtDuration(log.duration_minutes || 0)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">
+                      {log.notes || "-"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

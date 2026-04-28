@@ -30,6 +30,8 @@ import { ClientDocuments } from "@/components/clients/ClientDocuments";
 import { ClientTimeReport } from "@/components/clients/ClientTimeReport";
 import { WebProjectMiniCard } from "@/components/webproject/WebProjectMiniCard";
 import { PropertiesSection } from "@/components/clients/PropertiesSection";
+import { ClientTasksSection } from "@/components/clients/ClientTasksSection";
+import { ClientDeliverablesSummary } from "@/components/clients/ClientDeliverablesSummary";
 
 export default function ClientProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -166,6 +168,7 @@ export default function ClientProfilePage() {
             <Tabs defaultValue="overview" className="w-full">
               <TabsList className="mb-4 flex-wrap h-auto gap-1">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="tasks">Tasks</TabsTrigger>
                 {/* Properties tab — only for multisite clients */}
                 {client.is_multisite && (
                   <TabsTrigger value="properties">Properties</TabsTrigger>
@@ -195,6 +198,10 @@ export default function ClientProfilePage() {
                 )}
               </TabsContent>
 
+              <TabsContent value="tasks" className="space-y-4">
+                <ClientTasksSection clientId={id!} />
+              </TabsContent>
+
               {/* Properties tab — multisite only */}
               {client.is_multisite && (
                 <TabsContent value="properties" className="space-y-4">
@@ -207,10 +214,12 @@ export default function ClientProfilePage() {
               </TabsContent>
 
               <TabsContent value="backlinks" className="space-y-4">
+                <ClientDeliverablesSummary clientId={id!} serviceType="Backlinks" />
                 <BacklinkManager clientId={id!} />
               </TabsContent>
 
               <TabsContent value="social" className="space-y-4">
+                <ClientDeliverablesSummary clientId={id!} serviceType="Social Media" />
                 <SocialPostLog clientId={id!} />
               </TabsContent>
 
