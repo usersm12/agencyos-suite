@@ -1,12 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Timer, Square, Plus, Clock, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Clock, ChevronDown, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
@@ -15,8 +14,6 @@ interface TimeTrackerProps {
   clientId?: string | null;
 }
 
-const TIMER_KEY = (taskId: string) => `timer_start_${taskId}`;
-
 function fmtDuration(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
@@ -24,22 +21,10 @@ function fmtDuration(minutes: number): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
-function fmtElapsed(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return [h > 0 ? `${h}h` : null, `${String(m).padStart(2, "0")}m`, `${String(s).padStart(2, "0")}s`]
-    .filter(Boolean)
-    .join(" ");
-}
-
 export function TimeTracker({ taskId, clientId }: TimeTrackerProps) {
   const queryClient = useQueryClient();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [showManual, setShowManual] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const [timerRunning, setTimerRunning] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Manual log state
   const [manualDate, setManualDate] = useState(new Date().toISOString().split("T")[0]);
@@ -70,34 +55,6 @@ export function TimeTracker({ taskId, clientId }: TimeTrackerProps) {
     },
   });
 
-  // Restore running timer from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem(TIMER_KEY(taskId));
-    if (stored) {
-      const startedAt = Number(stored);
-      const secondsElapsed = Math.floor((Date.now() - startedAt) / 1000);
-      setElapsed(secondsElapsed);
-      setTimerRunning(true);
-    }
-  }, [taskId]);
-
-  // Tick
-  useEffect(() => {
-    if (timerRunning) {
-      timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [timerRunning]);
-
-  const startTimer = () => {
-    const now = Date.now();
-    localStorage.setItem(TIMER_KEY(taskId), String(now));
-    setElapsed(0);
-    setTimerRunning(true);
-  };
-
   const logMutation = useMutation({
     mutationFn: async (params: { durationMinutes: number; notes?: string; startedAt?: Date; endedAt?: Date }) => {
       const { error } = await supabase.from("time_logs").insert({
@@ -119,17 +76,6 @@ export function TimeTracker({ taskId, clientId }: TimeTrackerProps) {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const stopTimer = () => {
-    localStorage.removeItem(TIMER_KEY(taskId));
-    setTimerRunning(false);
-    const storedStart = localStorage.getItem(TIMER_KEY(taskId));
-    const startedAt = storedStart ? new Date(Number(storedStart)) : new Date(Date.now() - elapsed * 1000);
-    const endedAt = new Date();
-    const durationMinutes = Math.max(1, Math.round(elapsed / 60));
-    logMutation.mutate({ durationMinutes, startedAt, endedAt });
-    setElapsed(0);
-  };
-
   const handleManualLog = () => {
     const h = Number(manualHours) || 0;
     const m = Number(manualMinutes) || 0;
@@ -143,51 +89,21 @@ export function TimeTracker({ taskId, clientId }: TimeTrackerProps) {
     setShowManual(false);
   };
 
-  const totalMinutes = logs.reduce((sum: number, l: any) => sum + (l.duration_minutes || 0), 0);
+  const totalMinutes = (logs as any[]).reduce((sum: number, l: any) => sum + (l.duration_minutes || 0), 0);
 
   return (
     <div>
       <button className="flex items-center gap-2 w-full text-left mb-3" onClick={() => setCollapsed(!collapsed)}>
         <Clock className="h-5 w-5 text-primary" />
-        <h4 className="font-semibold text-sm flex-1">Time Tracking</h4>
+        <h4 className="font-semibold text-sm flex-1">Time Log</h4>
         {totalMinutes > 0 && (
-          <Badge variant="secondary" className="text-xs font-mono">Total: {fmtDuration(totalMinutes)}</Badge>
+          <span className="text-xs font-mono text-muted-foreground">{(logs as any[]).length} entr{(logs as any[]).length === 1 ? "y" : "ies"}</span>
         )}
         {collapsed ? <ChevronRight className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
       </button>
 
       {!collapsed && (
         <div className="space-y-3">
-          {/* Timer controls */}
-          <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border">
-            {timerRunning ? (
-              <>
-                <div className="flex-1">
-                  <p className="text-xs text-muted-foreground mb-0.5">Timer running</p>
-                  <p className="text-lg font-mono font-semibold text-primary tabular-nums">{fmtElapsed(elapsed)}</p>
-                </div>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="gap-2 shrink-0"
-                  onClick={stopTimer}
-                >
-                  <Square className="h-3.5 w-3.5" /> Stop & Log
-                </Button>
-              </>
-            ) : (
-              <>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Track time on this task</p>
-                  <p className="text-xs text-muted-foreground">Timer persists if you close this panel</p>
-                </div>
-                <Button size="sm" className="gap-2 shrink-0" onClick={startTimer}>
-                  <Timer className="h-3.5 w-3.5" /> Start Timer
-                </Button>
-              </>
-            )}
-          </div>
-
           {/* Manual log */}
           <div>
             <button

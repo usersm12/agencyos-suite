@@ -31,6 +31,7 @@ const addTaskSchema = z.object({
   description: z.string().optional(),
   needs_approval: z.boolean().default(false),
   target_count: z.number().int().positive().optional(),
+  estimated_hours: z.number().positive().optional(),
 });
 
 type AddTaskFormValues = z.infer<typeof addTaskSchema>;
@@ -68,7 +69,7 @@ export function AddTaskModal() {
 
   const form = useForm<AddTaskFormValues>({
     resolver: zodResolver(addTaskSchema),
-    defaultValues: { title: "", client_id: "", property_id: undefined, service_type: undefined, assigned_to: undefined, priority: "medium", description: "", needs_approval: false, target_count: undefined },
+    defaultValues: { title: "", client_id: "", property_id: undefined, service_type: undefined, assigned_to: undefined, priority: "medium", description: "", needs_approval: false, target_count: undefined, estimated_hours: undefined },
   });
 
   const selectedClientId = form.watch("client_id");
@@ -135,6 +136,7 @@ export function AddTaskModal() {
           description: data.description || null,
           needs_approval: data.needs_approval,
           target_count: data.target_count || null,
+          estimated_minutes: data.estimated_hours ? Math.round(data.estimated_hours * 60) : null,
         })
         .select("id")
         .single();
@@ -326,6 +328,24 @@ export function AddTaskModal() {
                       <SelectItem value="high">High</SelectItem>
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+
+              {/* Estimated hours */}
+              <FormField control={form.control} name="estimated_hours" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Estimated Hours</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min={0.5}
+                      step={0.5}
+                      placeholder="e.g. 4"
+                      value={field.value ?? ""}
+                      onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )} />

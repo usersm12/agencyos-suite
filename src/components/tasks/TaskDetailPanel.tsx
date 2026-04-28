@@ -28,6 +28,7 @@ import { TaskChecklist } from "./TaskChecklist";
 import { SOPGuide } from "./SOPGuide";
 import { TaskAttachments } from "./TaskAttachments";
 import { TimeTracker } from "./TimeTracker";
+import { TaskTimeBar } from "./TaskTimeBar";
 import { SubtasksSection } from "./SubtasksSection";
 import { WebProjectTab } from "@/components/webproject/WebProjectTab";
 
@@ -309,6 +310,15 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
                   )}
                 </div>
               </div>
+            </div>
+
+            {/* ── Time Bar — always visible ── */}
+            <div className="mb-4">
+              <TaskTimeBar
+                taskId={task.id}
+                clientId={(task as any).client_id}
+                estimatedMinutes={(task as any).estimated_minutes}
+              />
             </div>
 
             {/* ── Approval controls ── */}

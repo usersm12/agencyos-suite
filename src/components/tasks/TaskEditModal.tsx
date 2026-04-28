@@ -25,6 +25,7 @@ const schema = z.object({
   description:     z.string().optional(),
   needs_approval:  z.boolean().default(false),
   target_count:    z.number().int().positive().optional(),
+  estimated_hours: z.number().positive().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -44,7 +45,7 @@ export function TaskEditModal({ task, open, onClose }: Props) {
     resolver: zodResolver(schema),
     defaultValues: {
       title: "", client_id: "none", assigned_to: "none", priority: "medium",
-      due_date: "", service_type: "none", description: "", needs_approval: false, target_count: undefined,
+      due_date: "", service_type: "none", description: "", needs_approval: false, target_count: undefined, estimated_hours: undefined,
     },
   });
 
@@ -62,8 +63,9 @@ export function TaskEditModal({ task, open, onClose }: Props) {
         due_date:       task.due_date ? String(task.due_date).split("T")[0] : "",
         service_type:   task.service_type ?? "none",
         description:    task.description ?? "",
-        needs_approval: task.needs_approval ?? false,
-        target_count:   task.target_count ?? undefined,
+        needs_approval:  task.needs_approval ?? false,
+        target_count:    task.target_count ?? undefined,
+        estimated_hours: task.estimated_minutes ? task.estimated_minutes / 60 : undefined,
       });
     }
   }, [task, open, form]);
@@ -101,8 +103,9 @@ export function TaskEditModal({ task, open, onClose }: Props) {
           due_date:       values.due_date || null,
           service_type:   none(values.service_type),
           description:    values.description || null,
-          needs_approval: values.needs_approval,
-          target_count:   values.target_count || null,
+          needs_approval:    values.needs_approval,
+          target_count:      values.target_count || null,
+          estimated_minutes: values.estimated_hours ? Math.round(values.estimated_hours * 60) : null,
         })
         .eq("id", task.id);
 
@@ -237,6 +240,24 @@ export function TaskEditModal({ task, open, onClose }: Props) {
                 </FormItem>
               )} />
             )}
+
+            {/* Estimated hours */}
+            <FormField control={form.control} name="estimated_hours" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Estimated Hours</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min={0.5}
+                    step={0.5}
+                    placeholder="e.g. 4"
+                    value={field.value ?? ""}
+                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
 
             {/* Description */}
             <FormField control={form.control} name="description" render={({ field }) => (
