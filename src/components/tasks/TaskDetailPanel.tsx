@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { CheckCircle2, Globe, ShieldCheck, ShieldX, Clock4, Flag, Pencil, Trash2 } from "lucide-react";
+import { CheckCircle2, Globe, ShieldCheck, ShieldX, Clock4, Flag, Pencil, Trash2, BookOpen, ChevronDown, ChevronRight, Paperclip } from "lucide-react";
 import { COUNT_BASED_SERVICES } from "./AddTaskModal";
 import { sendPushToUsers } from "@/lib/pushNotify";
 import { TaskEditModal } from "./TaskEditModal";
@@ -47,6 +47,7 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
   const [approvalPending, setApprovalPending] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const handleSubtaskCount = useCallback((count: number) => {
     setOpenSubtasksCount(count);
@@ -437,131 +438,116 @@ export function TaskDetailPanel({ taskId, onClose }: TaskDetailPanelProps) {
               </div>
             )}
 
-            {/* ── Content — Web tasks get a tab bar, others are linear ── */}
-            {task.service_type?.toLowerCase().includes("web") ? (
-              <Tabs defaultValue="web" className="w-full">
-                <TabsList className="mb-4 w-full">
-                  <TabsTrigger value="web" className="flex items-center gap-1.5 flex-1">
-                    <Globe className="w-3.5 h-3.5" /> Web Project
-                  </TabsTrigger>
-                  <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
-                  <TabsTrigger value="comments" className="flex-1">Comments</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="web">
-                  <WebProjectTab taskId={task.id} clientId={clientId} />
-                </TabsContent>
-
-                <TabsContent value="details" className="space-y-6">
-                  <div>
-                    <h4 className="text-sm font-semibold mb-2">Description / Notes</h4>
-                    <div className="bg-muted/10 border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap">
-                      {task.description || "No description provided."}
-                    </div>
-                  </div>
-                  <Separator />
-                  <div>
-                    <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
-                      <CheckCircle2 className="w-5 h-5 text-green-500" />
-                      Deliverables
-                    </h4>
-                    <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} targetCount={task.target_count} />
-                  </div>
-                  <Separator />
-                  <SubtasksSection taskId={task.id} onOpenCountChange={handleSubtaskCount} />
-                  <Separator />
-                  <TaskChecklist taskId={task.id} serviceType={task.service_type} />
-                  <Separator />
-                  <TimeTracker taskId={task.id} clientId={clientId} />
-                  <Separator />
-                  <TaskAttachments taskId={task.id} />
-                </TabsContent>
-
-                <TabsContent value="comments">
-                  <div className="h-[400px] border rounded-lg p-4 bg-muted/10">
-                    <TaskComments taskId={task.id} />
-                  </div>
-                </TabsContent>
-              </Tabs>
-            ) : (() => {
+            {/* ── 3-Tab layout for all tasks ── */}
+            {(() => {
               const isCountBased = !!task.service_type && COUNT_BASED_SERVICES.includes(task.service_type);
-              return (
+              const isWebDev = task.service_type?.toLowerCase() === "web development";
+
+              // Shared Work tab content
+              const workTabContent = (
                 <div className="space-y-6">
-                  {/* Description */}
-                  <div>
-                    <h4 className="text-sm font-semibold mb-2">Description / Notes</h4>
-                    <div className="bg-muted/10 border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap">
-                      {task.description || "No description provided."}
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  {/* ── COUNT-BASED: Deliverables first, then Subtasks, no Checklist ── */}
-                  {isCountBased ? (
+                  {/* Description — only show if it has content */}
+                  {task.description && (
                     <>
-                      {/* Deliverables — top priority for count-based tasks */}
-                      {task.service_type && (
-                        <>
-                          <div>
-                            <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
-                              <CheckCircle2 className="w-5 h-5 text-green-500" />
-                              Deliverables
-                            </h4>
-                            <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} targetCount={task.target_count} />
-                          </div>
-                          <Separator />
-                        </>
-                      )}
-
-                      {/* Subtasks — for team assignment */}
-                      <SubtasksSection taskId={task.id} onOpenCountChange={handleSubtaskCount} />
-                      <Separator />
-                    </>
-                  ) : (
-                    <>
-                      {/* NON-COUNT: Subtasks + Checklist first */}
-                      <SubtasksSection taskId={task.id} onOpenCountChange={handleSubtaskCount} />
-                      <Separator />
-                      <TaskChecklist taskId={task.id} serviceType={task.service_type} />
-                      <Separator />
-
-                      {/* Deliverables */}
                       <div>
-                        <h4 className="flex items-center gap-2 text-md font-semibold mb-4">
-                          <CheckCircle2 className="w-5 h-5 text-green-500" />
-                          Deliverables
-                        </h4>
-                        {task.service_type ? (
-                          <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} targetCount={task.target_count} />
-                        ) : (
-                          <div className="p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
-                            No service type defined for this task.
-                          </div>
-                        )}
+                        <h4 className="text-sm font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Description</h4>
+                        <div className="bg-muted/10 border rounded-lg p-4 text-sm leading-relaxed whitespace-pre-wrap">
+                          {task.description}
+                        </div>
                       </div>
                       <Separator />
                     </>
                   )}
 
-                  {/* Time Tracker */}
-                  <TimeTracker taskId={task.id} clientId={clientId} />
+                  {/* Deliverables — top for count-based, present for all with a service */}
+                  {task.service_type && (
+                    <>
+                      <div>
+                        <h4 className="flex items-center gap-2 text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">
+                          <CheckCircle2 className="w-4 h-4 text-green-500" />
+                          Deliverables
+                        </h4>
+                        <TaskDeliverablesForm taskId={task.id} serviceType={task.service_type} targetCount={(task as any).target_count} />
+                      </div>
+                      <Separator />
+                    </>
+                  )}
+
+                  {/* Subtasks */}
+                  <SubtasksSection taskId={task.id} onOpenCountChange={handleSubtaskCount} />
 
                   <Separator />
 
-                  {/* Attachments */}
-                  <TaskAttachments taskId={task.id} />
-
-                  <Separator />
-
-                  {/* Comments */}
+                  {/* Process Guide — SOP checklist, collapsed by default */}
                   <div>
-                    <h4 className="font-semibold mb-4">Comments</h4>
-                    <div className="h-[400px] border rounded-lg p-4 bg-muted/10">
-                      <TaskComments taskId={task.id} />
-                    </div>
+                    <button
+                      className="flex items-center gap-2 w-full text-left"
+                      onClick={() => setGuideOpen((v) => !v)}
+                    >
+                      <BookOpen className="w-4 h-4 text-blue-500" />
+                      <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex-1">
+                        Process Guide
+                      </span>
+                      {task.service_type && <SOPGuide serviceType={task.service_type} />}
+                      {guideOpen
+                        ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                        : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                    </button>
+                    {guideOpen && (
+                      <div className="mt-3">
+                        <TaskChecklist taskId={task.id} serviceType={task.service_type} />
+                      </div>
+                    )}
                   </div>
                 </div>
+              );
+
+              return (
+                <Tabs defaultValue={isWebDev ? "web" : "work"} className="w-full">
+                  <TabsList className={`mb-4 w-full grid ${isWebDev ? "grid-cols-4" : "grid-cols-3"}`}>
+                    {isWebDev && (
+                      <TabsTrigger value="web" className="flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5" /> Web
+                      </TabsTrigger>
+                    )}
+                    <TabsTrigger value="work">Work</TabsTrigger>
+                    <TabsTrigger value="activity">Activity</TabsTrigger>
+                    <TabsTrigger value="files" className="flex items-center gap-1.5">
+                      <Paperclip className="w-3.5 h-3.5" /> Files & Time
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {/* Web Project tab — Web Dev only */}
+                  {isWebDev && (
+                    <TabsContent value="web">
+                      <WebProjectTab taskId={task.id} clientId={clientId} />
+                    </TabsContent>
+                  )}
+
+                  {/* Work tab */}
+                  <TabsContent value="work">
+                    {workTabContent}
+                  </TabsContent>
+
+                  {/* Activity tab — comments full height, no scrolling past other sections */}
+                  <TabsContent value="activity">
+                    <div className="h-[520px] flex flex-col">
+                      <TaskComments taskId={task.id} />
+                    </div>
+                  </TabsContent>
+
+                  {/* Files & Time tab */}
+                  <TabsContent value="files" className="space-y-6">
+                    <TimeTracker taskId={task.id} clientId={clientId} />
+                    <Separator />
+                    <div>
+                      <h4 className="flex items-center gap-2 text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">
+                        <Paperclip className="w-4 h-4" /> Attachments
+                      </h4>
+                      <TaskAttachments taskId={task.id} />
+                    </div>
+                  </TabsContent>
+                </Tabs>
               );
             })()}
           </>

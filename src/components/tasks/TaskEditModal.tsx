@@ -25,7 +25,8 @@ const schema = z.object({
   description:     z.string().optional(),
   needs_approval:  z.boolean().default(false),
   target_count:    z.number().int().positive().optional(),
-  estimated_hours: z.number().positive().optional(),
+  estimated_h: z.number().int().min(0).optional(),
+  estimated_m: z.number().int().min(0).max(59).optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -45,7 +46,7 @@ export function TaskEditModal({ task, open, onClose }: Props) {
     resolver: zodResolver(schema),
     defaultValues: {
       title: "", client_id: "none", assigned_to: "none", priority: "medium",
-      due_date: "", service_type: "none", description: "", needs_approval: false, target_count: undefined, estimated_hours: undefined,
+      due_date: "", service_type: "none", description: "", needs_approval: false, target_count: undefined, estimated_h: undefined, estimated_m: undefined,
     },
   });
 
@@ -65,7 +66,8 @@ export function TaskEditModal({ task, open, onClose }: Props) {
         description:    task.description ?? "",
         needs_approval:  task.needs_approval ?? false,
         target_count:    task.target_count ?? undefined,
-        estimated_hours: task.estimated_minutes ? task.estimated_minutes / 60 : undefined,
+        estimated_h:     task.estimated_minutes ? Math.floor(task.estimated_minutes / 60) : undefined,
+        estimated_m:     task.estimated_minutes ? task.estimated_minutes % 60 : undefined,
       });
     }
   }, [task, open, form]);
@@ -105,7 +107,7 @@ export function TaskEditModal({ task, open, onClose }: Props) {
           description:    values.description || null,
           needs_approval:    values.needs_approval,
           target_count:      values.target_count || null,
-          estimated_minutes: values.estimated_hours ? Math.round(values.estimated_hours * 60) : null,
+          estimated_minutes: ((values.estimated_h || 0) * 60 + (values.estimated_m || 0)) || null,
         })
         .eq("id", task.id);
 
@@ -241,23 +243,42 @@ export function TaskEditModal({ task, open, onClose }: Props) {
               )} />
             )}
 
-            {/* Estimated hours */}
-            <FormField control={form.control} name="estimated_hours" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Estimated Hours</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    min={0.5}
-                    step={0.5}
-                    placeholder="e.g. 4"
-                    value={field.value ?? ""}
-                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
+            {/* Estimated time — hours + minutes */}
+            <FormItem>
+              <FormLabel>Estimated Time</FormLabel>
+              <div className="flex items-center gap-2">
+                <FormField control={form.control} name="estimated_h" render={({ field }) => (
+                  <FormItem className="flex-1 space-y-0">
+                    <div className="relative">
+                      <FormControl>
+                        <Input
+                          type="number" min={0} placeholder="0"
+                          value={field.value ?? ""}
+                          onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                          className="pr-8"
+                        />
+                      </FormControl>
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">h</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="estimated_m" render={({ field }) => (
+                  <FormItem className="flex-1 space-y-0">
+                    <div className="relative">
+                      <FormControl>
+                        <Input
+                          type="number" min={0} max={59} placeholder="0"
+                          value={field.value ?? ""}
+                          onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                          className="pr-8"
+                        />
+                      </FormControl>
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">m</span>
+                    </div>
+                  </FormItem>
+                )} />
+              </div>
+            </FormItem>
 
             {/* Description */}
             <FormField control={form.control} name="description" render={({ field }) => (

@@ -31,7 +31,8 @@ const addTaskSchema = z.object({
   description: z.string().optional(),
   needs_approval: z.boolean().default(false),
   target_count: z.number().int().positive().optional(),
-  estimated_hours: z.number().positive().optional(),
+  estimated_h: z.number().int().min(0).optional(),
+  estimated_m: z.number().int().min(0).max(59).optional(),
 });
 
 type AddTaskFormValues = z.infer<typeof addTaskSchema>;
@@ -69,7 +70,7 @@ export function AddTaskModal() {
 
   const form = useForm<AddTaskFormValues>({
     resolver: zodResolver(addTaskSchema),
-    defaultValues: { title: "", client_id: "", property_id: undefined, service_type: undefined, assigned_to: undefined, priority: "medium", description: "", needs_approval: false, target_count: undefined, estimated_hours: undefined },
+    defaultValues: { title: "", client_id: "", property_id: undefined, service_type: undefined, assigned_to: undefined, priority: "medium", description: "", needs_approval: false, target_count: undefined, estimated_h: undefined, estimated_m: undefined },
   });
 
   const selectedClientId = form.watch("client_id");
@@ -136,7 +137,7 @@ export function AddTaskModal() {
           description: data.description || null,
           needs_approval: data.needs_approval,
           target_count: data.target_count || null,
-          estimated_minutes: data.estimated_hours ? Math.round(data.estimated_hours * 60) : null,
+          estimated_minutes: ((data.estimated_h || 0) * 60 + (data.estimated_m || 0)) || null,
         })
         .select("id")
         .single();
@@ -332,23 +333,42 @@ export function AddTaskModal() {
                 </FormItem>
               )} />
 
-              {/* Estimated hours */}
-              <FormField control={form.control} name="estimated_hours" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Estimated Hours</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={0.5}
-                      step={0.5}
-                      placeholder="e.g. 4"
-                      value={field.value ?? ""}
-                      onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              {/* Estimated time — hours + minutes */}
+              <FormItem>
+                <FormLabel>Estimated Time</FormLabel>
+                <div className="flex items-center gap-2">
+                  <FormField control={form.control} name="estimated_h" render={({ field }) => (
+                    <FormItem className="flex-1 space-y-0">
+                      <div className="relative">
+                        <FormControl>
+                          <Input
+                            type="number" min={0} placeholder="0"
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                            className="pr-8"
+                          />
+                        </FormControl>
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">h</span>
+                      </div>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="estimated_m" render={({ field }) => (
+                    <FormItem className="flex-1 space-y-0">
+                      <div className="relative">
+                        <FormControl>
+                          <Input
+                            type="number" min={0} max={59} placeholder="0"
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                            className="pr-8"
+                          />
+                        </FormControl>
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">m</span>
+                      </div>
+                    </FormItem>
+                  )} />
+                </div>
+              </FormItem>
             </div>
 
             <FormField control={form.control} name="description" render={({ field }) => (
