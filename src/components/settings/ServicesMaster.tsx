@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -6,12 +7,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  ChevronDown, ChevronRight, Plus, Pencil, Trash2,
+  Hash, Target, Layers,
+} from "lucide-react";
 import { toast } from "sonner";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Service {
   id: string;
@@ -20,235 +33,251 @@ interface Service {
   is_active: boolean;
 }
 
-interface TaskTemplate {
+interface Subtype {
   id: string;
   service_id: string;
-  template_name: string;
-  deliverable_fields: any;
+  name: string;
+  slug: string;
+  is_count_based: boolean;
+  description: string | null;
   sort_order: number;
 }
 
 interface GoalType {
   id: string;
-  service_id: string;
+  service_subtype_id: string | null;
+  service_id: string | null;
   goal_name: string;
-  goal_config: any;
+  goal_config: Record<string, unknown>;
 }
+
+// ─── Slug generator ───────────────────────────────────────────────────────────
+
+function toSlug(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ServicesMaster() {
   const { profile } = useAuth();
-  const [services, setServices] = useState<Service[]>([]);
-  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
-  const [goalTypes, setGoalTypes] = useState<GoalType[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
+  const canManage = profile?.role === "owner" || profile?.role === "manager";
+
   const [expandedService, setExpandedService] = useState<string | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingService, setEditingService] = useState<Service | null>(null);
-  const [formName, setFormName] = useState("");
-  const [formDesc, setFormDesc] = useState("");
+  const [expandedSubtype, setExpandedSubtype] = useState<string | null>(null);
 
-  const isOwner = profile?.role === "owner";
+  // ── Service dialog ─────────────────────────────────────────────────────────
+  const [svcDialog, setSvcDialog]       = useState(false);
+  const [editSvc, setEditSvc]           = useState<Service | null>(null);
+  const [svcName, setSvcName]           = useState("");
+  const [svcDesc, setSvcDesc]           = useState("");
 
-  const fetchData = async () => {
-    setLoading(true);
-    const [sRes, tRes, gRes] = await Promise.all([
-      supabase.from("services").select("*").order("name"),
-      supabase.from("service_task_templates").select("*").order("sort_order"),
-      supabase.from("service_goal_types").select("*").order("goal_name"),
-    ]);
-    setServices(sRes.data || []);
-    setTemplates(tRes.data || []);
-    setGoalTypes(gRes.data || []);
-    setLoading(false);
-  };
+  // ── Subtype dialog ─────────────────────────────────────────────────────────
+  const [stDialog, setStDialog]         = useState(false);
+  const [editSt, setEditSt]             = useState<Subtype | null>(null);
+  const [stServiceId, setStServiceId]   = useState("");
+  const [stName, setStName]             = useState("");
+  const [stSlug, setStSlug]             = useState("");
+  const [stDesc, setStDesc]             = useState("");
+  const [stCountBased, setStCountBased] = useState(false);
+  const [slugManual, setSlugManual]     = useState(false);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  // ── Goal type dialog ───────────────────────────────────────────────────────
+  const [goalDialog, setGoalDialog]     = useState(false);
+  const [editGoal, setEditGoal]         = useState<GoalType | null>(null);
+  const [goalSubtypeId, setGoalSubtypeId] = useState("");
+  const [goalName, setGoalName]         = useState("");
+  const [goalUnit, setGoalUnit]         = useState("");
 
-  const handleSaveService = async () => {
-    if (!formName.trim()) return;
+  // ── Delete confirm ─────────────────────────────────────────────────────────
+  const [deleteTarget, setDeleteTarget] = useState<{ type: "service" | "subtype" | "goal"; id: string; label: string } | null>(null);
 
-    if (editingService) {
-      const { error } = await supabase
-        .from("services")
-        .update({ name: formName, description: formDesc || null })
-        .eq("id", editingService.id);
-      if (error) {
-        toast.error(error.message);
-        return;
-      }
-      toast.success("Service updated");
-    } else {
-      const { error } = await supabase
-        .from("services")
-        .insert({ name: formName, description: formDesc || null });
-      if (error) {
-        toast.error(error.message);
-        return;
-      }
-      toast.success("Service added");
-    }
-    setDialogOpen(false);
-    setEditingService(null);
-    setFormName("");
-    setFormDesc("");
-    fetchData();
-  };
+  // ─── Queries ──────────────────────────────────────────────────────────────
 
-  const handleToggleActive = async (service: Service) => {
-    const { error } = await supabase
-      .from("services")
-      .update({ is_active: !service.is_active })
-      .eq("id", service.id);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    fetchData();
-  };
+  const { data: services = [], isLoading } = useQuery({
+    queryKey: ["services-master"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("services").select("*").order("name");
+      if (error) throw error;
+      return data as Service[];
+    },
+  });
 
-  const handleDeleteService = async (id: string) => {
-    const { error } = await supabase.from("services").delete().eq("id", id);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    toast.success("Service deleted");
-    fetchData();
-  };
+  const { data: subtypes = [] } = useQuery({
+    queryKey: ["service-subtypes-master"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("service_subtypes").select("*").order("sort_order");
+      if (error) throw error;
+      return data as Subtype[];
+    },
+  });
 
-  const openEditDialog = (service: Service) => {
-    setEditingService(service);
-    setFormName(service.name);
-    setFormDesc(service.description || "");
-    setDialogOpen(true);
-  };
+  const { data: goalTypes = [] } = useQuery({
+    queryKey: ["service-goal-types-master"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("service_goal_types").select("*").order("goal_name");
+      if (error) throw error;
+      return data as GoalType[];
+    },
+  });
 
-  const openNewDialog = () => {
-    setEditingService(null);
-    setFormName("");
-    setFormDesc("");
-    setDialogOpen(true);
-  };
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: ["services-master"] });
+    qc.invalidateQueries({ queryKey: ["service-subtypes-master"] });
+    qc.invalidateQueries({ queryKey: ["service-goal-types-master"] });
+    qc.invalidateQueries({ queryKey: ["services-and-subtypes"] });
+  }
 
-  // Task template management
-  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
-  const [templateServiceId, setTemplateServiceId] = useState("");
-  const [templateName, setTemplateName] = useState("");
-  const [templateFields, setTemplateFields] = useState("");
+  // ─── Service CRUD ─────────────────────────────────────────────────────────
 
-  const handleAddTemplate = async () => {
-    if (!templateName.trim()) return;
-    let fields: string[] = [];
-    try {
-      fields = templateFields.split(",").map((f) => f.trim()).filter(Boolean);
-    } catch {}
-    const { error } = await supabase.from("service_task_templates").insert({
-      service_id: templateServiceId,
-      template_name: templateName,
-      deliverable_fields: fields,
-    });
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    toast.success("Template added");
-    setTemplateDialogOpen(false);
-    setTemplateName("");
-    setTemplateFields("");
-    fetchData();
-  };
+  function openNewService() {
+    setEditSvc(null); setSvcName(""); setSvcDesc(""); setSvcDialog(true);
+  }
+  function openEditService(s: Service) {
+    setEditSvc(s); setSvcName(s.name); setSvcDesc(s.description || ""); setSvcDialog(true);
+  }
 
-  const handleDeleteTemplate = async (id: string) => {
-    await supabase.from("service_task_templates").delete().eq("id", id);
-    fetchData();
-  };
+  async function saveService() {
+    if (!svcName.trim()) return;
+    const payload = { name: svcName.trim(), description: svcDesc.trim() || null };
+    const { error } = editSvc
+      ? await supabase.from("services").update(payload).eq("id", editSvc.id)
+      : await supabase.from("services").insert(payload);
+    if (error) { toast.error(error.message); return; }
+    toast.success(editSvc ? "Service updated" : "Service added");
+    setSvcDialog(false);
+    invalidate();
+  }
 
-  // Goal type management
-  const [goalDialogOpen, setGoalDialogOpen] = useState(false);
-  const [goalServiceId, setGoalServiceId] = useState("");
-  const [goalName, setGoalName] = useState("");
-  const [goalConfig, setGoalConfig] = useState("");
+  async function toggleServiceActive(s: Service) {
+    const { error } = await supabase.from("services").update({ is_active: !s.is_active }).eq("id", s.id);
+    if (error) toast.error(error.message);
+    else invalidate();
+  }
 
-  const handleAddGoal = async () => {
+  // ─── Subtype CRUD ─────────────────────────────────────────────────────────
+
+  function openNewSubtype(serviceId: string) {
+    setEditSt(null);
+    setStServiceId(serviceId);
+    setStName(""); setStSlug(""); setStDesc("");
+    setStCountBased(false); setSlugManual(false);
+    setStDialog(true);
+  }
+  function openEditSubtype(st: Subtype) {
+    setEditSt(st);
+    setStServiceId(st.service_id);
+    setStName(st.name); setStSlug(st.slug); setStDesc(st.description || "");
+    setStCountBased(st.is_count_based); setSlugManual(true);
+    setStDialog(true);
+  }
+  function handleStNameChange(val: string) {
+    setStName(val);
+    if (!slugManual) setStSlug(toSlug(val));
+  }
+
+  async function saveSubtype() {
+    if (!stName.trim() || !stSlug.trim()) return;
+    const payload = {
+      service_id: stServiceId,
+      name: stName.trim(),
+      slug: stSlug.trim(),
+      is_count_based: stCountBased,
+      description: stDesc.trim() || null,
+    };
+    const { error } = editSt
+      ? await supabase.from("service_subtypes").update(payload).eq("id", editSt.id)
+      : await supabase.from("service_subtypes").insert(payload);
+    if (error) { toast.error(error.message); return; }
+    toast.success(editSt ? "Subtype updated" : "Subtype added");
+    setStDialog(false);
+    invalidate();
+  }
+
+  // ─── Goal type CRUD ───────────────────────────────────────────────────────
+
+  function openNewGoal(subtypeId: string) {
+    setEditGoal(null);
+    setGoalSubtypeId(subtypeId);
+    setGoalName(""); setGoalUnit("");
+    setGoalDialog(true);
+  }
+  function openEditGoal(g: GoalType) {
+    setEditGoal(g);
+    setGoalSubtypeId(g.service_subtype_id || "");
+    setGoalName(g.goal_name);
+    const cfg = g.goal_config as any;
+    setGoalUnit(cfg?.unit || "");
+    setGoalDialog(true);
+  }
+
+  async function saveGoal() {
     if (!goalName.trim()) return;
-    let config = {};
-    try {
-      config = goalConfig ? JSON.parse(goalConfig) : {};
-    } catch {
-      toast.error("Invalid JSON config");
-      return;
-    }
-    const { error } = await supabase.from("service_goal_types").insert({
-      service_id: goalServiceId,
-      goal_name: goalName,
+    const config: Record<string, unknown> = {};
+    if (goalUnit.trim()) config.unit = goalUnit.trim();
+
+    const payload = {
+      service_subtype_id: goalSubtypeId || null,
+      service_id: null,   // goals are now at subtype level
+      goal_name: goalName.trim(),
       goal_config: config,
-    });
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    toast.success("Goal type added");
-    setGoalDialogOpen(false);
-    setGoalName("");
-    setGoalConfig("");
-    fetchData();
-  };
+    };
+    const { error } = editGoal
+      ? await supabase.from("service_goal_types").update(payload).eq("id", editGoal.id)
+      : await supabase.from("service_goal_types").insert(payload);
+    if (error) { toast.error(error.message); return; }
+    toast.success(editGoal ? "Goal type updated" : "Goal type added");
+    setGoalDialog(false);
+    invalidate();
+  }
 
-  const handleDeleteGoal = async (id: string) => {
-    await supabase.from("service_goal_types").delete().eq("id", id);
-    fetchData();
-  };
+  // ─── Delete ───────────────────────────────────────────────────────────────
 
-  if (!isOwner) {
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const { type, id } = deleteTarget;
+    const table =
+      type === "service"  ? "services"            :
+      type === "subtype"  ? "service_subtypes"     :
+                            "service_goal_types";
+    const { error } = await supabase.from(table as any).delete().eq("id", id);
+    if (error) toast.error(error.message);
+    else { toast.success("Deleted"); invalidate(); }
+    setDeleteTarget(null);
+  }
+
+  // ─── Guard ────────────────────────────────────────────────────────────────
+
+  if (!canManage) {
     return (
       <Card>
         <CardContent className="py-8 text-center text-muted-foreground">
-          Only owners can manage services.
+          Only managers and owners can manage services.
         </CardContent>
       </Card>
     );
   }
 
-  if (loading) {
-    return <p className="text-muted-foreground">Loading services...</p>;
-  }
+  if (isLoading) return <div className="h-40 rounded-xl bg-muted animate-pulse" />;
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Services Master</h2>
+          <h2 className="text-lg font-semibold">Services &amp; Subtypes</h2>
           <p className="text-sm text-muted-foreground">
-            Manage the services your agency offers. Each service drives task templates and goal types.
+            Define the services your agency offers and the specific subtypes used in tasks and goals.
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={openNewDialog} size="sm">
-              <Plus className="h-4 w-4 mr-1" /> Add Service
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingService ? "Edit Service" : "Add Service"}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Service Name</Label>
-                <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="e.g. SEO" />
-              </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea value={formDesc} onChange={(e) => setFormDesc(e.target.value)} placeholder="Describe this service..." />
-              </div>
-              <Button onClick={handleSaveService} className="w-full">
-                {editingService ? "Update" : "Create"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <Button size="sm" onClick={openNewService}>
+          <Plus className="h-4 w-4 mr-1" /> Add Service
+        </Button>
       </div>
 
       {services.length === 0 && (
@@ -259,164 +288,278 @@ export default function ServicesMaster() {
         </Card>
       )}
 
-      {services.map((service) => {
-        const serviceTemplates = templates.filter((t) => t.service_id === service.id);
-        const serviceGoals = goalTypes.filter((g) => g.service_id === service.id);
-        const isExpanded = expandedService === service.id;
+      {/* Service list */}
+      {services.map((svc) => {
+        const svcSubtypes = subtypes.filter(st => st.service_id === svc.id);
+        const isExpanded  = expandedService === svc.id;
 
         return (
-          <Card key={service.id} className="animate-fade-in">
+          <Card key={svc.id}>
+            {/* Service header */}
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setExpandedService(isExpanded ? null : service.id)}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </button>
-                  <div>
-                    <CardTitle className="text-base">{service.name}</CardTitle>
-                    {service.description && (
-                      <p className="text-sm text-muted-foreground mt-0.5">{service.description}</p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant={service.is_active ? "default" : "secondary"}>
-                    {service.is_active ? "Active" : "Inactive"}
+                <button
+                  className="flex items-center gap-2 text-left flex-1 min-w-0"
+                  onClick={() => setExpandedService(isExpanded ? null : svc.id)}
+                >
+                  {isExpanded
+                    ? <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                    : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                  <CardTitle className="text-base">{svc.name}</CardTitle>
+                  {svc.description && (
+                    <span className="text-sm text-muted-foreground truncate hidden sm:block">
+                      — {svc.description}
+                    </span>
+                  )}
+                  <Badge variant="outline" className="text-[10px] shrink-0">
+                    {svcSubtypes.length} subtype{svcSubtypes.length !== 1 ? "s" : ""}
                   </Badge>
-                  <Switch checked={service.is_active} onCheckedChange={() => handleToggleActive(service)} />
-                  <Button variant="ghost" size="icon" onClick={() => openEditDialog(service)}>
-                    <Pencil className="h-4 w-4" />
+                </button>
+                <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                  <Switch
+                    checked={svc.is_active}
+                    onCheckedChange={() => toggleServiceActive(svc)}
+                    className="scale-90"
+                  />
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditService(svc)}>
+                    <Pencil className="h-3.5 w-3.5" />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDeleteService(service.id)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
+                  <Button
+                    variant="ghost" size="icon" className="h-7 w-7"
+                    onClick={() => setDeleteTarget({ type: "service", id: svc.id, label: svc.name })}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
                   </Button>
                 </div>
               </div>
             </CardHeader>
 
+            {/* Expanded: subtypes */}
             {isExpanded && (
-              <CardContent className="space-y-4">
+              <CardContent className="pt-0 space-y-3">
                 <Separator />
-                {/* Task Templates */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium">Task Templates</h3>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setTemplateServiceId(service.id);
-                        setTemplateName("");
-                        setTemplateFields("");
-                        setTemplateDialogOpen(true);
-                      }}
-                    >
-                      <Plus className="h-3 w-3 mr-1" /> Add
-                    </Button>
-                  </div>
-                  {serviceTemplates.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No templates yet.</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {serviceTemplates.map((t) => (
-                        <div key={t.id} className="flex items-center justify-between py-1.5 px-2 rounded bg-muted/50">
-                          <div>
-                            <span className="text-sm">{t.template_name}</span>
-                            {Array.isArray(t.deliverable_fields) && t.deliverable_fields.length > 0 && (
-                              <span className="text-xs text-muted-foreground ml-2">
-                                ({(t.deliverable_fields as string[]).join(", ")})
-                              </span>
-                            )}
-                          </div>
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeleteTemplate(t.id)}>
-                            <Trash2 className="h-3 w-3 text-destructive" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
 
-                {/* Goal Types */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium">Goal Types</h3>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setGoalServiceId(service.id);
-                        setGoalName("");
-                        setGoalConfig("");
-                        setGoalDialogOpen(true);
-                      }}
-                    >
-                      <Plus className="h-3 w-3 mr-1" /> Add
-                    </Button>
-                  </div>
-                  {serviceGoals.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No goal types yet.</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {serviceGoals.map((g) => (
-                        <div key={g.id} className="flex items-center justify-between py-1.5 px-2 rounded bg-muted/50">
-                          <span className="text-sm">{g.goal_name}</span>
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeleteGoal(g.id)}>
-                            <Trash2 className="h-3 w-3 text-destructive" />
-                          </Button>
+                {svcSubtypes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-2">
+                    No subtypes yet. Add subtypes to enable task assignment and goal tracking.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {svcSubtypes.map((st) => {
+                      const stGoals     = goalTypes.filter(g => g.service_subtype_id === st.id);
+                      const stExpanded  = expandedSubtype === st.id;
+
+                      return (
+                        <div key={st.id} className="rounded-lg border bg-muted/20">
+                          {/* Subtype row */}
+                          <div className="flex items-center justify-between px-3 py-2.5">
+                            <button
+                              className="flex items-center gap-2 text-left flex-1 min-w-0"
+                              onClick={() => setExpandedSubtype(stExpanded ? null : st.id)}
+                            >
+                              {stExpanded
+                                ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                              <span className="text-sm font-medium">{st.name}</span>
+                              <code className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded hidden sm:block">
+                                {st.slug}
+                              </code>
+                              {st.is_count_based && (
+                                <Badge className="bg-blue-100 text-blue-700 text-[10px] gap-1 shrink-0">
+                                  <Hash className="w-2.5 h-2.5" /> count-based
+                                </Badge>
+                              )}
+                              <span className="text-xs text-muted-foreground shrink-0">
+                                {stGoals.length} goal{stGoals.length !== 1 ? "s" : ""}
+                              </span>
+                            </button>
+                            <div className="flex items-center gap-1 ml-2 shrink-0">
+                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEditSubtype(st)}>
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost" size="icon" className="h-6 w-6"
+                                onClick={() => setDeleteTarget({ type: "subtype", id: st.id, label: st.name })}
+                              >
+                                <Trash2 className="h-3 w-3 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Expanded: goal types */}
+                          {stExpanded && (
+                            <div className="border-t px-4 py-3 space-y-2 bg-background/60 rounded-b-lg">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                                  <Target className="w-3 h-3" /> Goal Types
+                                </p>
+                                <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={() => openNewGoal(st.id)}>
+                                  <Plus className="h-3 w-3" /> Add Goal
+                                </Button>
+                              </div>
+
+                              {stGoals.length === 0 ? (
+                                <p className="text-xs text-muted-foreground">
+                                  No goal types yet. Add goals to track performance targets for this subtype.
+                                </p>
+                              ) : (
+                                <div className="space-y-1">
+                                  {stGoals.map(g => {
+                                    const cfg = g.goal_config as any;
+                                    return (
+                                      <div key={g.id} className="flex items-center justify-between py-1.5 px-2 rounded bg-muted/50">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-sm">{g.goal_name}</span>
+                                          {cfg?.unit && (
+                                            <span className="text-xs text-muted-foreground">({cfg.unit})</span>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEditGoal(g)}>
+                                            <Pencil className="h-3 w-3" />
+                                          </Button>
+                                          <Button
+                                            variant="ghost" size="icon" className="h-6 w-6"
+                                            onClick={() => setDeleteTarget({ type: "goal", id: g.id, label: g.goal_name })}
+                                          >
+                                            <Trash2 className="h-3 w-3 text-destructive" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => openNewSubtype(svc.id)}>
+                  <Layers className="h-3.5 w-3.5" /> Add Subtype
+                </Button>
               </CardContent>
             )}
           </Card>
         );
       })}
 
-      {/* Template Dialog */}
-      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
-        <DialogContent>
+      {/* ── Dialogs ── */}
+
+      {/* Service dialog */}
+      <Dialog open={svcDialog} onOpenChange={setSvcDialog}>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Add Task Template</DialogTitle>
+            <DialogTitle>{editSvc ? "Edit Service" : "Add Service"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Template Name</Label>
-              <Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="e.g. Monthly Keyword Research" />
+          <div className="space-y-4 pt-1">
+            <div className="space-y-1.5">
+              <Label>Name *</Label>
+              <Input value={svcName} onChange={e => setSvcName(e.target.value)} placeholder="e.g. SEO" />
             </div>
-            <div className="space-y-2">
-              <Label>Deliverable Fields (comma-separated)</Label>
-              <Input value={templateFields} onChange={(e) => setTemplateFields(e.target.value)} placeholder="e.g. Report URL, Keyword Count, Notes" />
+            <div className="space-y-1.5">
+              <Label>Description</Label>
+              <Textarea value={svcDesc} onChange={e => setSvcDesc(e.target.value)} placeholder="Brief description…" className="min-h-[70px]" />
             </div>
-            <Button onClick={handleAddTemplate} className="w-full">Add Template</Button>
+            <Button className="w-full" onClick={saveService}>
+              {editSvc ? "Update Service" : "Create Service"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Goal Dialog */}
-      <Dialog open={goalDialogOpen} onOpenChange={setGoalDialogOpen}>
-        <DialogContent>
+      {/* Subtype dialog */}
+      <Dialog open={stDialog} onOpenChange={setStDialog}>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Add Goal Type</DialogTitle>
+            <DialogTitle>{editSt ? "Edit Subtype" : "Add Subtype"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Goal Name</Label>
-              <Input value={goalName} onChange={(e) => setGoalName(e.target.value)} placeholder="e.g. Traffic Target" />
+          <div className="space-y-4 pt-1">
+            <div className="space-y-1.5">
+              <Label>Name *</Label>
+              <Input
+                value={stName}
+                onChange={e => handleStNameChange(e.target.value)}
+                placeholder="e.g. Backlinks"
+              />
             </div>
-            <div className="space-y-2">
-              <Label>Config (JSON, optional)</Label>
-              <Textarea value={goalConfig} onChange={(e) => setGoalConfig(e.target.value)} placeholder='e.g. {"unit": "visitors/month", "min": 0}' />
+            <div className="space-y-1.5">
+              <Label>Slug *</Label>
+              <Input
+                value={stSlug}
+                onChange={e => { setStSlug(e.target.value); setSlugManual(true); }}
+                placeholder="e.g. backlinks"
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">Used internally to match tasks and SOPs. Lowercase, underscores only.</p>
             </div>
-            <Button onClick={handleAddGoal} className="w-full">Add Goal Type</Button>
+            <div className="space-y-1.5">
+              <Label>Description</Label>
+              <Input value={stDesc} onChange={e => setStDesc(e.target.value)} placeholder="Brief description…" />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium">Count-based</p>
+                <p className="text-xs text-muted-foreground">Tracks a monthly numeric target (e.g. 20 backlinks)</p>
+              </div>
+              <Switch checked={stCountBased} onCheckedChange={setStCountBased} />
+            </div>
+            <Button className="w-full" onClick={saveSubtype}>
+              {editSt ? "Update Subtype" : "Add Subtype"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Goal type dialog */}
+      <Dialog open={goalDialog} onOpenChange={setGoalDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{editGoal ? "Edit Goal Type" : "Add Goal Type"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div className="space-y-1.5">
+              <Label>Goal Name *</Label>
+              <Input value={goalName} onChange={e => setGoalName(e.target.value)} placeholder="e.g. Monthly Link Target" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Unit</Label>
+              <Input value={goalUnit} onChange={e => setGoalUnit(e.target.value)} placeholder="e.g. links/month, articles, posts" />
+            </div>
+            <Button className="w-full" onClick={saveGoal}>
+              {editGoal ? "Update Goal Type" : "Add Goal Type"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirm */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={v => !v && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{deleteTarget?.label}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.type === "service"
+                ? "This will also delete all subtypes and goal types under this service."
+                : deleteTarget?.type === "subtype"
+                ? "This will also delete all goal types under this subtype."
+                : "This goal type will be removed and cannot be recovered."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmDelete}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

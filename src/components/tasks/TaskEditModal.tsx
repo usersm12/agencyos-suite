@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import { COUNT_BASED_SERVICES } from "./AddTaskModal";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,20 +12,19 @@ import { Switch } from "@/components/ui/switch";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, parseISO } from "date-fns";
 
 const schema = z.object({
-  title:           z.string().min(1, "Title is required"),
-  client_id:       z.string().optional(),
-  assigned_to:     z.string().optional(),
-  priority:        z.enum(["low", "medium", "high"]),
-  due_date:        z.string().optional(),
-  service_type:    z.string().optional(),
-  description:     z.string().optional(),
-  needs_approval:  z.boolean().default(false),
-  target_count:    z.number().int().positive().optional(),
-  estimated_h: z.number().int().min(0).optional(),
-  estimated_m: z.number().int().min(0).max(59).optional(),
+  title:              z.string().min(1, "Title is required"),
+  client_id:          z.string().optional(),
+  assigned_to:        z.string().optional(),
+  priority:           z.enum(["low", "medium", "high"]),
+  due_date:           z.string().optional(),
+  service_subtype_id: z.string().optional(),
+  description:        z.string().optional(),
+  needs_approval:     z.boolean().default(false),
+  target_count:       z.number().int().positive().optional(),
+  estimated_h:        z.number().int().min(0).optional(),
+  estimated_m:        z.number().int().min(0).max(59).optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -37,40 +35,64 @@ interface Props {
   onClose: () => void;
 }
 
-const SERVICES = ["Backlinks", "Content Writing", "On-Page SEO", "Technical SEO", "Google Ads", "Meta Ads", "Social Media", "Web Development"];
-
 export function TaskEditModal({ task, open, onClose }: Props) {
   const queryClient = useQueryClient();
+  const [selectedServiceId, setSelectedServiceId] = useState<string>("");
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       title: "", client_id: "none", assigned_to: "none", priority: "medium",
-      due_date: "", service_type: "none", description: "", needs_approval: false, target_count: undefined, estimated_h: undefined, estimated_m: undefined,
+      due_date: "", service_subtype_id: undefined, description: "",
+      needs_approval: false, target_count: undefined,
+      estimated_h: undefined, estimated_m: undefined,
     },
   });
 
-  const selectedService = form.watch("service_type");
-  const isCountBased = !!selectedService && COUNT_BASED_SERVICES.includes(selectedService);
+  // Load services + subtypes
+  const { data: services = [] } = useQuery({
+    queryKey: ["services-and-subtypes"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("services")
+        .select("id, name, service_subtypes(id, name, slug, is_count_based, sort_order)")
+        .eq("is_active", true).order("name");
+      if (error) throw error;
+      return data as Array<{ id: string; name: string; service_subtypes: Array<{ id: string; name: string; slug: string; is_count_based: boolean; sort_order: number }> }>;
+    },
+    enabled: open,
+  });
+
+  const selectedSubtypeId = form.watch("service_subtype_id");
+  const availableSubtypes = services.find(s => s.id === selectedServiceId)?.service_subtypes
+    ?.slice().sort((a, b) => a.sort_order - b.sort_order) || [];
+  const selectedSubtype = services.flatMap(s => s.service_subtypes).find(st => st.id === selectedSubtypeId);
+  const isCountBased = !!selectedSubtype?.is_count_based;
 
   // Populate from task whenever modal opens
   useEffect(() => {
     if (task && open) {
+      // Resolve parent service from subtype
+      const subtypeId = task.service_subtype_id ?? undefined;
+      if (subtypeId && services.length > 0) {
+        const parentSvc = services.find(s => s.service_subtypes.some(st => st.id === subtypeId));
+        if (parentSvc) setSelectedServiceId(parentSvc.id);
+      }
       form.reset({
-        title:          task.title ?? "",
-        client_id:      task.client_id ?? "none",
-        assigned_to:    task.assigned_to ?? "none",
-        priority:       task.priority ?? "medium",
-        due_date:       task.due_date ? String(task.due_date).split("T")[0] : "",
-        service_type:   task.service_type ?? "none",
-        description:    task.description ?? "",
-        needs_approval:  task.needs_approval ?? false,
-        target_count:    task.target_count ?? undefined,
-        estimated_h:     task.estimated_minutes ? Math.floor(task.estimated_minutes / 60) : undefined,
-        estimated_m:     task.estimated_minutes ? task.estimated_minutes % 60 : undefined,
+        title:              task.title ?? "",
+        client_id:          task.client_id ?? "none",
+        assigned_to:        task.assigned_to ?? "none",
+        priority:           task.priority ?? "medium",
+        due_date:           task.due_date ? String(task.due_date).split("T")[0] : "",
+        service_subtype_id: subtypeId,
+        description:        task.description ?? "",
+        needs_approval:     task.needs_approval ?? false,
+        target_count:       task.target_count ?? undefined,
+        estimated_h:        task.estimated_minutes ? Math.floor(task.estimated_minutes / 60) : undefined,
+        estimated_m:        task.estimated_minutes ? task.estimated_minutes % 60 : undefined,
       });
     }
-  }, [task, open, form]);
+  }, [task, open, services]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: clients = [] } = useQuery({
     queryKey: ["edit-task-clients"],
@@ -98,16 +120,17 @@ export function TaskEditModal({ task, open, onClose }: Props) {
       const { error } = await supabase
         .from("tasks")
         .update({
-          title:          values.title,
-          client_id:      none(values.client_id),
-          assigned_to:    none(values.assigned_to),
-          priority:       values.priority,
-          due_date:       values.due_date || null,
-          service_type:   none(values.service_type),
-          description:    values.description || null,
-          needs_approval:    values.needs_approval,
-          target_count:      values.target_count || null,
-          estimated_minutes: ((values.estimated_h || 0) * 60 + (values.estimated_m || 0)) || null,
+          title:              values.title,
+          client_id:          none(values.client_id),
+          assigned_to:        none(values.assigned_to),
+          priority:           values.priority,
+          due_date:           values.due_date || null,
+          service_subtype_id: values.service_subtype_id || null,
+          service_type:       selectedSubtype?.name || null,
+          description:        values.description || null,
+          needs_approval:     values.needs_approval,
+          target_count:       values.target_count || null,
+          estimated_minutes:  ((values.estimated_h || 0) * 60 + (values.estimated_m || 0)) || null,
         })
         .eq("id", task.id);
 
@@ -203,37 +226,53 @@ export function TaskEditModal({ task, open, onClose }: Props) {
                 </FormItem>
               )} />
 
-              {/* Service type */}
-              <FormField control={form.control} name="service_type" render={({ field }) => (
-                <FormItem className="md:col-span-2">
-                  <FormLabel>Service Type</FormLabel>
-                  <Select value={field.value ?? ""} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {SERVICES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </FormItem>
-              )} />
+              {/* Step 1: Parent service */}
+              <FormItem className="md:col-span-2">
+                <FormLabel>Service</FormLabel>
+                <Select
+                  value={selectedServiceId}
+                  onValueChange={(v) => {
+                    setSelectedServiceId(v);
+                    form.setValue("service_subtype_id", undefined);
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {services.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FormItem>
+
+              {/* Step 2: Subtype */}
+              {selectedServiceId && selectedServiceId !== "none" && (
+                <FormField control={form.control} name="service_subtype_id" render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Subtype</FormLabel>
+                    <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Select a subtype" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {availableSubtypes.map(st => (
+                          <SelectItem key={st.id} value={st.id}>{st.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              )}
             </div>
 
-            {/* Target count — only for count-based services */}
+            {/* Target count — only for count-based subtypes */}
             {isCountBased && (
               <FormField control={form.control} name="target_count" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>
-                    {selectedService === "Backlinks" ? "Backlinks to Build This Month" :
-                     selectedService === "Content Writing" ? "Articles to Write This Month" :
-                     "Posts to Publish This Month"}
-                  </FormLabel>
+                  <FormLabel>Monthly Target ({selectedSubtype?.name})</FormLabel>
                   <FormControl>
                     <Input
-                      type="number"
-                      min={1}
-                      placeholder="e.g. 20"
+                      type="number" min={1} placeholder="e.g. 20"
                       value={field.value ?? ""}
                       onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
                     />

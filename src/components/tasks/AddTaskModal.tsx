@@ -24,7 +24,7 @@ const addTaskSchema = z.object({
   title: z.string().min(2, "Title is required"),
   client_id: z.string().min(1, "Client is required"),
   property_id: z.string().optional(),
-  service_type: z.string().optional(),
+  service_subtype_id: z.string().optional(),
   assigned_to: z.string().optional(),
   due_date: z.date().optional(),
   priority: z.enum(["low", "medium", "high"]).default("medium"),
@@ -37,7 +37,7 @@ const addTaskSchema = z.object({
 
 type AddTaskFormValues = z.infer<typeof addTaskSchema>;
 
-// Services where the task has a numeric monthly target (count-based progress)
+// Kept for backward-compat imports — logic is now driven by subtype.is_count_based
 export const COUNT_BASED_SERVICES = ["Backlinks", "Content Writing", "Social Media"];
 
 function getAutoSubtasks(serviceType: string): string[] {
@@ -65,12 +65,13 @@ function getAutoSubtasks(serviceType: string): string[] {
 
 export function AddTaskModal() {
   const [open, setOpen] = useState(false);
+  const [selectedServiceId, setSelectedServiceId] = useState<string>("");
   const queryClient = useQueryClient();
   const { profile } = useAuth();
 
   const form = useForm<AddTaskFormValues>({
     resolver: zodResolver(addTaskSchema),
-    defaultValues: { title: "", client_id: "", property_id: undefined, service_type: undefined, assigned_to: undefined, priority: "medium", description: "", needs_approval: false, target_count: undefined, estimated_h: undefined, estimated_m: undefined },
+    defaultValues: { title: "", client_id: "", property_id: undefined, service_subtype_id: undefined, assigned_to: undefined, priority: "medium", description: "", needs_approval: false, target_count: undefined, estimated_h: undefined, estimated_m: undefined },
   });
 
   const selectedClientId = form.watch("client_id");
@@ -113,13 +114,29 @@ export function AddTaskModal() {
     enabled: open,
   });
 
-  const SERVICES_LIST = ["Backlinks", "Content Writing", "On-Page SEO", "Technical SEO", "Google Ads", "Meta Ads", "Social Media", "Web Development"];
-  const selectedService = form.watch("service_type");
-  const isCountBased = !!selectedService && COUNT_BASED_SERVICES.includes(selectedService);
+  const { data: services = [] } = useQuery({
+    queryKey: ["services-and-subtypes"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("services")
+        .select("id, name, service_subtypes(id, name, slug, is_count_based, sort_order)")
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return data as Array<{ id: string; name: string; service_subtypes: Array<{ id: string; name: string; slug: string; is_count_based: boolean; sort_order: number }> }>;
+    },
+    enabled: open,
+  });
+
+  const selectedSubtypeId = form.watch("service_subtype_id");
+  const availableSubtypes = services.find(s => s.id === selectedServiceId)?.service_subtypes
+    ?.slice().sort((a, b) => a.sort_order - b.sort_order) || [];
+  const selectedSubtype = availableSubtypes.find(st => st.id === selectedSubtypeId);
+  const isCountBased = !!selectedSubtype?.is_count_based;
 
   function handleOpenChange(v: boolean) {
     setOpen(v);
-    if (!v) form.reset();
+    if (!v) { form.reset(); setSelectedServiceId(""); }
   }
 
   async function onSubmit(data: AddTaskFormValues) {
@@ -130,7 +147,9 @@ export function AddTaskModal() {
           title: data.title,
           client_id: data.client_id,
           property_id: data.property_id || null,
-          service_type: data.service_type || null,
+          service_subtype_id: data.service_subtype_id || null,
+          // Keep service_type text in sync for backward compat
+          service_type: selectedSubtype?.name || null,
           assigned_to: data.assigned_to || null,
           due_date: data.due_date ? format(data.due_date, "yyyy-MM-dd") : null,
           priority: data.priority,
@@ -158,8 +177,8 @@ export function AddTaskModal() {
         sendPushToUsers([data.assigned_to], "New task assigned to you", notifBody, `/tasks?open=${newTask.id}`);
       }
 
-      if (newTask && data.service_type) {
-        const autoSubtasks = getAutoSubtasks(data.service_type);
+      if (newTask && selectedSubtype?.name) {
+        const autoSubtasks = getAutoSubtasks(selectedSubtype.name);
         if (autoSubtasks.length > 0) {
           await supabase.from("subtasks").insert(
             autoSubtasks.map((title) => ({ parent_task_id: newTask.id, title, status: "not_started", priority: "medium", created_by: profile?.id || null }))
@@ -239,36 +258,52 @@ export function AddTaskModal() {
                 )} />
               )}
 
-              {/* Service Type */}
-              <FormField control={form.control} name="service_type" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Service Type</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {SERVICES_LIST.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              {/* Step 1: Parent service */}
+              <FormItem>
+                <FormLabel>Service</FormLabel>
+                <Select
+                  value={selectedServiceId}
+                  onValueChange={(v) => {
+                    setSelectedServiceId(v);
+                    form.setValue("service_subtype_id", undefined);
+                    form.setValue("target_count", undefined);
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
+                  <SelectContent>
+                    {services.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FormItem>
 
-              {/* Target count — only for count-based services */}
+              {/* Step 2: Subtype (filtered by selected service) */}
+              {selectedServiceId && (
+                <FormField control={form.control} name="service_subtype_id" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Subtype</FormLabel>
+                    <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Select a subtype" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {availableSubtypes.map(st => (
+                          <SelectItem key={st.id} value={st.id}>{st.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              )}
+
+              {/* Target count — only for count-based subtypes */}
               {isCountBased && (
                 <FormField control={form.control} name="target_count" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>
-                      {selectedService === "Backlinks" ? "Backlinks to Build This Month" :
-                       selectedService === "Content Writing" ? "Articles to Write This Month" :
-                       "Posts to Publish This Month"}
-                    </FormLabel>
+                    <FormLabel>Monthly Target ({selectedSubtype?.name})</FormLabel>
                     <FormControl>
                       <Input
-                        type="number"
-                        min={1}
-                        placeholder="e.g. 20"
+                        type="number" min={1} placeholder="e.g. 20"
                         value={field.value ?? ""}
                         onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
                       />
