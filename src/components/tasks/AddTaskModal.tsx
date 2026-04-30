@@ -65,7 +65,7 @@ function getAutoSubtasks(serviceType: string): string[] {
 
 export function AddTaskModal() {
   const [open, setOpen] = useState(false);
-  const [selectedServiceId, setSelectedServiceId] = useState<string>("");
+  const [selectedServiceId, setSelectedServiceId] = useState<string | undefined>(undefined);
   const queryClient = useQueryClient();
   const { profile } = useAuth();
 
@@ -136,7 +136,7 @@ export function AddTaskModal() {
 
   function handleOpenChange(v: boolean) {
     setOpen(v);
-    if (!v) { form.reset(); setSelectedServiceId(""); }
+    if (!v) { form.reset(); setSelectedServiceId(undefined); }
   }
 
   async function onSubmit(data: AddTaskFormValues) {
@@ -262,22 +262,24 @@ export function AddTaskModal() {
               <FormItem>
                 <FormLabel>Service</FormLabel>
                 <Select
-                  value={selectedServiceId}
+                  value={selectedServiceId ?? ""}
                   onValueChange={(v) => {
-                    setSelectedServiceId(v);
+                    const val = v === "__none__" ? undefined : v;
+                    setSelectedServiceId(val);
                     form.setValue("service_subtype_id", undefined);
                     form.setValue("target_count", undefined);
                   }}
                 >
                   <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
                     {services.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </FormItem>
 
               {/* Step 2: Subtype (filtered by selected service) */}
-              {selectedServiceId && (
+              {selectedServiceId && selectedServiceId !== "__none__" && (
                 <FormField control={form.control} name="service_subtype_id" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Subtype</FormLabel>

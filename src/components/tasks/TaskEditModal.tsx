@@ -37,7 +37,7 @@ interface Props {
 
 export function TaskEditModal({ task, open, onClose }: Props) {
   const queryClient = useQueryClient();
-  const [selectedServiceId, setSelectedServiceId] = useState<string>("");
+  const [selectedServiceId, setSelectedServiceId] = useState<string | undefined>(undefined);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -76,7 +76,9 @@ export function TaskEditModal({ task, open, onClose }: Props) {
       const subtypeId = task.service_subtype_id ?? undefined;
       if (subtypeId && services.length > 0) {
         const parentSvc = services.find(s => s.service_subtypes.some(st => st.id === subtypeId));
-        if (parentSvc) setSelectedServiceId(parentSvc.id);
+        setSelectedServiceId(parentSvc ? parentSvc.id : undefined);
+      } else if (!subtypeId) {
+        setSelectedServiceId(undefined);
       }
       form.reset({
         title:              task.title ?? "",
@@ -230,22 +232,23 @@ export function TaskEditModal({ task, open, onClose }: Props) {
               <FormItem className="md:col-span-2">
                 <FormLabel>Service</FormLabel>
                 <Select
-                  value={selectedServiceId}
+                  value={selectedServiceId ?? ""}
                   onValueChange={(v) => {
-                    setSelectedServiceId(v);
+                    const val = v === "__none__" ? undefined : v;
+                    setSelectedServiceId(val);
                     form.setValue("service_subtype_id", undefined);
                   }}
                 >
                   <SelectTrigger><SelectValue placeholder="Select a service" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="__none__">None</SelectItem>
                     {services.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </FormItem>
 
               {/* Step 2: Subtype */}
-              {selectedServiceId && selectedServiceId !== "none" && (
+              {selectedServiceId && selectedServiceId !== "__none__" && (
                 <FormField control={form.control} name="service_subtype_id" render={({ field }) => (
                   <FormItem className="md:col-span-2">
                     <FormLabel>Subtype</FormLabel>
