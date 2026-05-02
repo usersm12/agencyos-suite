@@ -57,7 +57,7 @@ export function AddClientModal({ children }: AddClientModalProps) {
       status: "active",
       active_services: [],
       is_multisite: false,
-      properties: [{ name: "", url: "", property_type: "website", is_primary: true }],
+      properties: [],   // empty — items only added when is_multisite is toggled on
     },
   });
 
@@ -184,11 +184,16 @@ export function AddClientModal({ children }: AddClientModalProps) {
                       checked={field.value}
                       onCheckedChange={(val) => {
                         field.onChange(val);
-                        // Reset to one blank property when toggling on
-                        if (val && propertyFields.length === 0) {
-                          form.setValue("properties", [
-                            { name: "", url: "", property_type: "website", is_primary: true },
-                          ]);
+                        if (val) {
+                          // Toggling ON — seed one blank property if none exist
+                          if (propertyFields.length === 0) {
+                            form.setValue("properties", [
+                              { name: "", url: "", property_type: "website", is_primary: true },
+                            ]);
+                          }
+                        } else {
+                          // Toggling OFF — clear so hidden items don't block validation
+                          form.setValue("properties", []);
                         }
                       }}
                     />
